@@ -317,6 +317,19 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
   const aiwrap = $('.cl-aiwrap'), aimenu = $('.cl-aimenu', aiwrap);
   if (!customAi) aiwrap.hidden = true;
   fx.popover(aiwrap, $('.cl-addai', aiwrap));
+  // the composer is clipped for layout, so pin the menu to the viewport while open
+  const placeAiMenu = () => {
+    if (!aiwrap.classList.contains('open')) { aimenu.style.position = ''; aimenu.style.left = ''; aimenu.style.right = ''; aimenu.style.top = ''; aimenu.style.bottom = ''; aimenu.style.zIndex = ''; return; }
+    const r = $('.cl-addai', aiwrap).getBoundingClientRect();
+    aimenu.style.position = 'fixed';
+    aimenu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 258)) + 'px';
+    aimenu.style.top = 'auto';
+    aimenu.style.bottom = Math.max(8, window.innerHeight - r.top + 10) + 'px';
+    aimenu.style.right = 'auto';
+    aimenu.style.zIndex = '1000';
+  };
+  new MutationObserver(placeAiMenu).observe(aiwrap, { attributes: true, attributeFilter: ['class'] });
+  window.addEventListener('resize', placeAiMenu);
   async function drawAiMenu() {
     const ais = (winApi.aiList && (await winApi.aiList().catch(() => []))) || [];
     aimenu.innerHTML = `<button class="menu-item" data-add>${ICON.plus}<span>Add an AI…</span></button><div class="menu-sep"></div>`;
