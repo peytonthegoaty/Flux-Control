@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('flux', {
   aiRemove: (id) => ipcRenderer.invoke('ai:remove', id),
   onUpdate: (cb) => ipcRenderer.on('update:ready', (_e, v) => cb(v)),
   onUpdateFailed: (cb) => ipcRenderer.on('update:failed', (_e, m) => cb(m)),
+  onUpdateStatus: (cb) => ipcRenderer.on('update:status', (_e, s) => cb(s)),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
   applyUpdate: () => ipcRenderer.send('update:apply'),
   resume: () => ipcRenderer.invoke('app:resume'),
   reportFeatures: (f) => ipcRenderer.send('app:features', f),

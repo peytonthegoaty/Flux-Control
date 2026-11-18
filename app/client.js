@@ -311,15 +311,40 @@ $('#stopShare').onclick = async () => {
   }
 };
 // ---- updates: installed without asking; a session you are watching finishes first
-let updateWaiting = false;
-const applyUpdate = () => { fx.toast('Updating Flux Control…'); setTimeout(() => winApi.applyUpdate(), 1200); };
+let updateWaiting = false, manualUpdate = false;
+const updBtn = $('#checkUpdateBtn'), updStatus = $('#updStatus');
+const setUpd = (text, off) => { if (updStatus) updStatus.textContent = text || ''; if (updBtn) updBtn.classList.toggle('off', !!off); };
+const applyUpdate = (msg) => { fx.toast(msg || 'Updating Flux Control…'); setTimeout(() => winApi.applyUpdate && winApi.applyUpdate(), 800); };
 if (winApi.onUpdate) {
   winApi.onUpdate((v) => {
+    if (manualUpdate) { manualUpdate = false; setUpd('Updating to v' + v + '…', true); return applyUpdate('Update found (v' + v + '). Restarting to update…'); }
     if (current === 'session') { if (!updateWaiting) fx.toast(`Version ${v} is ready. It installs when you disconnect.`); updateWaiting = true; }
     else applyUpdate();
   });
-  winApi.onUpdateFailed((m) => fx.toast('Update failed: ' + m));
+  winApi.onUpdateFailed((m) => { manualUpdate = false; setUpd('Update failed', false); fx.toast('Update failed: ' + m); });
+  if (winApi.onUpdateStatus) winApi.onUpdateStatus((s) => {
+    if (!s) return;
+    if (s.state === 'checking') setUpd('Checking for updates…', true);
+    else if (s.state === 'downloading') setUpd('Downloading v' + s.version + '…', true);
+    else if (s.state === 'ready') setUpd('Update v' + s.version + ' ready', true);
+    else if (s.state === 'upToDate') { manualUpdate = false; setUpd('Up to date (v' + s.version + ')', false); fx.toast('Flux Control is up to date'); }
+    else if (s.state === 'error') { manualUpdate = false; setUpd('Check failed', false); }
+    else if (s.state === 'unavailable') { manualUpdate = false; setUpd('Updates unavailable in this install', false); }
+  });
 }
+if (updBtn) updBtn.onclick = async () => {
+  if (updBtn.classList.contains('off') || !winApi.checkUpdate) return;
+  manualUpdate = true; setUpd('Checking for updates…', true);
+  try {
+    const r = await winApi.checkUpdate();
+    if (r && r.state === 'ready') { setUpd('Updating to v' + r.version + '…', true); applyUpdate('Update found (v' + r.version + '). Restarting to update…'); }
+    else if (r && r.state === 'upToDate') { manualUpdate = false; setUpd('Up to date (v' + r.version + ')', false); fx.toast('Flux Control is up to date'); }
+    else if (r && r.state === 'error') { manualUpdate = false; setUpd('Check failed', false); fx.toast('Update check failed: ' + r.err); }
+    else if (r && r.state === 'unavailable') { manualUpdate = false; setUpd('Updates unavailable in this install', false); fx.toast('This copy cannot self-update from here'); }
+    else if (r && r.state === 'checking') { /* wait for status/ready events */ }
+    else { manualUpdate = false; setUpd('', false); }
+  } catch (e) { manualUpdate = false; setUpd('Check failed', false); fx.toast('Update check failed: ' + e.message); }
+};
 // after an update restart: share again with the same settings and password
 if (winApi.resume) winApi.resume().then(async (cfg) => {
   if (!cfg) return;

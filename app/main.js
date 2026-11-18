@@ -135,18 +135,34 @@ ipcMain.handle('apps:elev', () => {
 // ---- updates: GitHub is checked every 30 s. A new version is downloaded and verified in the background, then the app swaps
 // its own files and restarts; if this PC was being shared, sharing starts again with the same settings and password.
 const REPO = 'peytonthegoaty/Flux-Control';
-let lastHostCfg = null, pendingUpdate = null, checking = false;
+let lastHostCfg = null, pendingUpdate = null, checking = false, manualNotify = false, checkWaiters = [];
 const newerVer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
 const installed = () => path.resolve(__dirname, '..').toLowerCase() === path.resolve(fluxHome()).toLowerCase();   // only the installed copy updates itself
-async function checkUpdate() {
-  if (pendingUpdate || checking || process.env.FLUX_SHOT || !installed()) return;
-  checking = true;
+const updSend = (state, extra = {}) => { try { if (win && !win.isDestroyed()) win.webContents.send('update:status', { state, ...extra }); } catch {} };
+async function checkUpdate(manual = false) {
+  if (pendingUpdate) { if (manual) updSend('ready', { version: pendingUpdate.tag }); return { state: 'ready', version: pendingUpdate.tag }; }
+  if (checking) {
+    if (manual) manualNotify = true;
+    return new Promise((resolve) => checkWaiters.push({ manual, resolve }));
+  }
+  if (process.env.FLUX_SHOT) return { state: 'unavailable' };
+  if (!installed()) { if (manual) updSend('unavailable'); return { state: 'unavailable' }; }
+  checking = true; manualNotify = !!manual;
+  const notify = () => manualNotify;
+  if (notify()) updSend('checking');
+  let result;
   try {
-    const r = await fetch(`https://github.com/${REPO}/releases/latest`, { redirect: 'manual' });
-    const tag = ((r.headers.get('location') || '').match(/\/tag\/v([\d.]+)$/) || [])[1];
-    if (!tag || !newerVer(tag, app.getVersion())) return;
-    const url = `https://github.com/${REPO}/releases/download/v${tag}/flux-control-payload.zip`;
-    const [zip, sum] = await Promise.all([fetch(url).then((x) => (x.ok ? x.arrayBuffer() : Promise.reject(new Error('download ' + x.status)))), fetch(url + '.sha256').then((x) => x.text())]);
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { 'User-Agent': 'flux-control', 'Accept': 'application/vnd.github+json' } });
+    if (!r.ok) throw new Error('update check failed (' + r.status + ')');
+    const rel = await r.json();
+    const tag = String(rel.tag_name || '').replace(/^v/, '');
+    const assets = Array.isArray(rel.assets) ? rel.assets : [];
+    const assetUrl = (name) => (assets.find((a) => a && a.name === name) || {}).browser_download_url;
+    const url = assetUrl('flux-control-payload.zip'), shaUrl = assetUrl('flux-control-payload.zip.sha256');
+    if (!tag || rel.draft || rel.prerelease || !newerVer(tag, app.getVersion())) { result = { state: 'upToDate', version: app.getVersion() }; if (notify()) updSend('upToDate', { version: app.getVersion() }); return result; }
+    if (!url || !shaUrl) throw new Error('latest release is missing update files');
+    if (notify()) updSend('downloading', { version: tag });
+    const [zip, sum] = await Promise.all([fetch(url).then((x) => (x.ok ? x.arrayBuffer() : Promise.reject(new Error('download ' + x.status)))), fetch(shaUrl).then((x) => (x.ok ? x.text() : Promise.reject(new Error('checksum ' + x.status))))]);
     const buf = Buffer.from(zip);
     if (require('crypto').createHash('sha256').update(buf).digest('hex') !== sum.trim().split(/\s+/)[0]) throw new Error('checksum mismatch');
     const dir = path.join(fluxHome(), 'update-' + tag), file = path.join(fluxHome(), 'update-' + tag + '.zip');
@@ -155,10 +171,18 @@ async function checkUpdate() {
     fs.rmSync(file, { force: true });
     if (!fs.existsSync(path.join(dir, 'app', 'main.js'))) throw new Error('the update is incomplete');
     pendingUpdate = { tag, dir };
+    result = { state: 'ready', version: tag };
+    if (notify()) updSend('ready', { version: tag });
     if (win && !win.isDestroyed()) win.webContents.send('update:ready', tag);
-  } catch {} finally { checking = false; }
+    return result;
+  } catch (e) { result = { state: 'error', err: String(e && e.message || e) }; if (notify()) updSend('error', { err: result.err }); return result; } finally {
+    checking = false;
+    const waiters = checkWaiters.splice(0); manualNotify = false;
+    for (const w of waiters) w.resolve(result || { state: 'error', err: 'unknown' });
+  }
 }
-setTimeout(checkUpdate, 10000); setInterval(checkUpdate, 30000);
+setTimeout(() => checkUpdate(), 10000); setInterval(() => checkUpdate(), 30000);
+ipcMain.handle('update:check', () => checkUpdate(true));
 ipcMain.on('update:apply', async () => {
   const u = pendingUpdate; if (!u) return;
   const h = fluxHome(), moved = [];
