@@ -319,27 +319,35 @@ function startOpenCode(sender, d, text) {
   const args = ['run', '-m', model, '--format', 'json'];
   if (ocSessions.get(id)) args.push('-s', ocSessions.get(id));
   args.push(text);   // spawn passes it as one argument, never through a shell
-  let child; try { child = spawn(exe, args, { cwd, windowsHide: true }); } catch (e) { return { error: 'Could not start OpenCode: ' + e.message }; }
+  let child; try { child = spawn(exe, args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); } catch (e) { return { error: 'Could not start OpenCode: ' + e.message }; }
+  try { child.stdin.end(); } catch {}
   const key = crypto.randomUUID(), t0 = Date.now();
   runs.set(key, { sid: id, child });
   const send = (o) => { if (!sender.isDestroyed()) sender.send('claude:line', key, o); };
   const errs = [];
+  let hadErr = null;
   readline.createInterface({ input: child.stdout }).on('line', (l) => {
     let o; try { o = JSON.parse(l); } catch { return; }
     if (o.sessionID) ocSessions.set(id, o.sessionID);
     const p = o.part || {};
-    if (o.type === 'text' && p.text) send({ type: 'assistant', message: { content: [{ type: 'text', text: p.text }] } });
-    else if (p.type === 'tool' || o.type === 'tool_use') {
+    if ((o.type === 'text' || p.type === 'text') && (p.text || o.text)) {
+      send({ type: 'assistant', message: { content: [{ type: 'text', text: p.text || o.text }] } });
+    } else if (p.type === 'tool' || o.type === 'tool_use') {
       const st = p.state || {};
       send({ type: 'assistant', message: { content: [{ type: 'tool_use', id: p.callID || p.id, name: p.tool || 'tool', input: st.input || {} }] } });
-      if (st.output != null || st.error) send({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: p.callID || p.id, content: String(st.output || st.error || ''), is_error: !!st.error }] } });
+      if (st.status === 'completed' || st.status === 'error' || st.output != null || st.error) send({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: p.callID || p.id, content: String(st.output || st.error || ''), is_error: !!st.error || st.status === 'error' }] } });
+    } else if (o.type === 'error') {
+      const msg = (o.error && ((o.error.data && o.error.data.message) || o.error.message)) || (typeof o.error === 'string' ? o.error : '') || 'OpenCode error';
+      hadErr = String(msg);
+      errs.push(hadErr);
     }
   });
-  readline.createInterface({ input: child.stderr }).on('line', (l) => errs.push(l));
-  child.on('error', (e) => errs.push(e.message));
+  readline.createInterface({ input: child.stderr }).on('line', (l) => { if (l) errs.push(l); });
+  child.on('error', (e) => errs.push(e.message || String(e)));
   child.on('close', (code) => {
     runs.delete(key);
-    send(code === 0 ? { type: 'result', subtype: 'success', duration_ms: Date.now() - t0 } : { type: 'result', subtype: 'error', is_error: true, result: errs.slice(-3).join('\n') || 'OpenCode stopped (' + code + ')' });
+    const errMsg = hadErr || errs.slice(-3).join('\n') || 'OpenCode stopped (' + code + ')';
+    send(code === 0 && !hadErr ? { type: 'result', subtype: 'success', duration_ms: Date.now() - t0 } : { type: 'result', subtype: 'error', is_error: true, result: errMsg });
     send({ type: 'exit', code });
   });
   return { run: key, id };
