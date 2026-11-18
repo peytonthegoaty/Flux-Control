@@ -1,0 +1,64 @@
+/* Flux Control PC client. Built on ../shared/style.css (nothing default, see CLAUDE.md). */
+
+.dchip { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line2); color: var(--mut); font-size: 13px; }
+.dchip .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex: none; transition: background .3s; }
+.dchip.ok { color: #fff; }
+.dchip.ok .dot { background: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.12); }
+#decoded.open, #pwBox.open { max-height: 120px; }
+
+.btn.small { height: 34px; padding: 0 14px 0 8px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; margin: 0 0 14px -8px; }
+.btn.small svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.panel.home { width: min(640px, 100%); }
+.panel.home .cards { margin-top: 26px; }
+.wide { width: min(780px, 100%); height: 100%; margin: 0 auto; display: flex; flex-direction: column; padding: 22px 0 24px; }
+.wide h2 { font-size: 30px; }
+.wide .fx-scroll { margin-top: 12px; }
+.note { color: var(--mut); font-size: 13px; margin-top: 4px; }
+.actions { display: flex; justify-content: flex-end; padding-top: 14px; }
+.main .screen.top { padding: 64px 40px 0; justify-content: flex-start; }
+#webBox, #clientBox { padding: 0 2px; }
+
+#sharing .dep { align-items: flex-start; }
+#sharing .dep .ico { margin-top: 2px; }
+.shnote { color: var(--dim); font-size: 12px; margin-top: 8px; }
+
+.limitrow { display: flex; align-items: center; gap: 14px; }
+.limitslot { flex: 1; min-width: 0; }
+.seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line2); flex: none; }
+.seg button { height: 30px; padding: 0 14px; border-radius: 999px; font-weight: 600; font-size: 13px; color: var(--mut); transition: background .2s, color .2s; }
+.seg button.on { background: #fff; color: #000; }
+
+/* ---- shell: icon sidebar + page, over soft fog (all of it off while connected, so the video stays smooth) ---- */
+.fog { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.fog i { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .5; }
+.fog i:nth-child(1) { width: 640px; height: 640px; left: 12%; top: -280px; background: radial-gradient(circle, rgba(190, 196, 210, .22), transparent 70%); animation: drift 24s ease-in-out infinite alternate; }
+.fog i:nth-child(2) { width: 520px; height: 520px; right: -160px; top: 140px; background: radial-gradient(circle, rgba(255, 255, 255, .1), transparent 70%); animation: drift 30s ease-in-out infinite alternate-reverse; }
+.fog i:nth-child(3) { width: 700px; height: 420px; left: -200px; bottom: -240px; background: radial-gradient(circle, rgba(140, 146, 160, .18), transparent 70%); animation: drift 36s ease-in-out infinite alternate; }
+@keyframes drift { to { transform: translate(70px, 40px) scale(1.1); } }
+.app.in-session .fog, .app.in-session .side { display: none; }
+
+.glass { background: rgba(255, 255, 255, .035); border: 1px solid rgba(255, 255, 255, .09); border-radius: 22px; backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); box-shadow: 0 18px 50px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .05); }
+
+.side { position: absolute; left: 14px; top: 14px; bottom: 14px; width: 66px; z-index: 20; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0; }
+.side-logo { height: 40px; display: grid; place-items: center; margin-bottom: 8px; }
+.side-logo svg { height: 22px; width: auto; fill: #fff; }
+.side-spacer { flex: 1; }
+.navbtn { position: relative; z-index: 1; width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; color: #8b9099; transition: color .2s, transform .25s var(--ease), background .2s; }
+.navbtn[hidden] { display: none; }
+.navbtn:hover { color: #fff; background: rgba(255, 255, 255, .06); }
+.navbtn:active { transform: scale(.92); }
+.navbtn.active { color: #fff; }
+.navbtn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.navbtn::after { content: attr(data-tip); position: absolute; left: calc(100% + 12px); top: 50%; transform: translate(-6px, -50%); padding: 6px 11px; border-radius: 10px; background: rgba(20, 20, 24, .92); border: 1px solid rgba(255, 255, 255, .12); font: 600 12.5px Geist, system-ui, sans-serif; color: #f4f5f7; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s, transform .2s var(--ease); }
+.navbtn:hover::after { opacity: 1; transform: translate(0, -50%); }
+.side-ind { position: absolute; left: 10px; top: 0; width: 46px; height: 46px; border-radius: 15px; background: rgba(255, 255, 255, .11); border: 1px solid rgba(255, 255, 255, .14); opacity: 0; transition: transform .45s var(--ease), opacity .3s; pointer-events: none; z-index: 0; }
+
+.app:not(.in-session) .main { left: 96px; }
+
+/* title bar: Windows draws its own buttons on the right (titleBarOverlay); this strip is the ONLY drag area
+   (a drag area lower down blocks clicks across its whole row in this window mode) */
+.titlebar { position: fixed; top: 0; left: 0; right: 0; height: 34px; z-index: 50; display: flex; align-items: center; gap: 9px; padding: 0 14px; background: #050505; border-bottom: 1px solid #141414; color: #8a8a8a; font-size: 12px; font-weight: 600; -webkit-app-region: drag; }
+.titlebar svg { width: 12px; height: 15px; fill: #f5f5f5; }
+body > .app { top: 34px; }
+body:has(.app.fs) .titlebar { display: none; }
+body > .app.fs { top: 0; }

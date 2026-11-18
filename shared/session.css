@@ -1,0 +1,112 @@
+/* Shared by the PC client and the web client: window shell, top bar, remote stage. Nothing default (see CLAUDE.md). */
+html, body { background: #050505; }
+.app { position: absolute; inset: 0; background: var(--bg); background-image: radial-gradient(900px 420px at 50% -10%, rgba(255,255,255,.06), transparent 60%); }
+
+@font-face { font-family: Geist; src: url(assets/geist-medium.ttf); font-weight: 400 500; }
+@font-face { font-family: Geist; src: url(assets/geist-semibold.ttf); font-weight: 600 800; }
+
+/* Floating glass pill (top centre), only while connected. It sits as a circle with the F and opens when the pointer comes near. */
+.pillbar {
+  --tb-panel: rgba(255, 255, 255, 0.08); --tb-line: rgba(255, 255, 255, 0.10); --tb-line2: rgba(255, 255, 255, 0.18); --tb-muted: #a3a8b0;
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30;
+  display: none; align-items: center; height: 44px; padding: 4px; border-radius: 999px;
+  background: rgba(30, 30, 34, 0.42); border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .07);
+  font-family: Geist, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  transition: transform .45s var(--ease);
+}
+.pillbar button { -webkit-app-region: no-drag; }
+.app.in-session .pillbar { display: flex; animation: pillIn .5s var(--ease); }
+@keyframes pillIn { from { opacity: 0; transform: translate(-50%, -10px); } }
+.pill-f { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; background: rgba(255, 255, 255, .1); transition: background .2s, transform .3s var(--ease); }
+.pill-f svg { height: 16px; width: auto; fill: #fff; }
+.pillbar.collapsed .pill-f { cursor: pointer; }
+.pillbar.collapsed .pill-f:hover { background: rgba(255, 255, 255, .18); transform: scale(1.06); }
+.pillbar:not(.collapsed) .pill-f { cursor: default; }
+.pill-body { display: flex; align-items: center; gap: 3px; max-width: 640px; padding-left: 6px; white-space: nowrap; overflow: hidden; opacity: 1; transition: max-width .5s var(--ease), padding .35s var(--ease), opacity .25s .1s; }
+.pillbar.settled:not(.collapsed) .pill-body { overflow: visible; }   /* lets the menu hang below the pill once the animation is done */
+.pillbar.collapsed .pill-body { max-width: 0; padding-left: 0; opacity: 0; transition: max-width .5s var(--ease), padding .35s var(--ease), opacity .15s; pointer-events: none; }
+.pill-sep { width: 1px; height: 18px; background: var(--tb-line2); margin: 0 4px; flex: none; }
+
+.tb-btn { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--tb-muted); transition: background .15s, color .15s, transform .2s var(--ease); }
+.tb-btn:hover { background: var(--tb-panel); color: #f4f5f7; }
+.tb-btn:active { transform: scale(.92); }
+.tb-btn.close:hover { background: #e5484d; color: #fff; }
+.tb-btn svg, .account-chip svg, .menu-item svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.tb-btn svg.swap { animation: pop .3s var(--ease); }
+@keyframes pop { from { transform: scale(.6); opacity: 0; } }
+
+.chipwrap { position: relative; }
+.account-chip {
+  display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 0 6px;
+  border-radius: 999px; background: var(--tb-panel); border: 1px solid var(--tb-line); font-weight: 600; font-size: 13px; color: #f4f5f7;
+  transition: border-color .15s;
+}
+.account-chip:hover { border-color: var(--tb-line2); }
+.account-chip .chev { width: 15px; height: 15px; transition: transform .25s var(--ease); }
+.account-chip .name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar { width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,.12); flex: none; position: relative; }
+.avatar::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: #6b717b; transition: background .3s; }
+.app.in-session .avatar::after { background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.2); }
+.app:not(.in-session) .account-chip { cursor: default; }
+.app:not(.in-session) .account-chip:hover { border-color: var(--tb-line); }
+.app:not(.in-session) .chev { display: none; }
+.chipwrap.open .chev { transform: rotate(180deg); }
+
+.tb-menu {
+  position: absolute; top: calc(100% + 14px); left: 0; width: 250px; z-index: 40; padding: 6px;
+  background: rgba(20, 20, 24, .72); border: 1px solid var(--tb-line2); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  opacity: 0; transform: translateY(-4px) scale(.98); transform-origin: top left; pointer-events: none; transition: opacity .15s, transform .2s var(--ease);
+}
+.chipwrap.open .tb-menu { opacity: 1; transform: none; pointer-events: auto; }
+.menu-head { padding: 8px 10px 6px; }
+.menu-head .mh-name { font-weight: 650; }
+.menu-head .mh-sub { font-size: 11.5px; color: #8b9099; }
+.menu-sep { height: 1px; background: var(--tb-line); margin: 6px 4px; }
+.menu-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; font-weight: 600; font-size: 13.5px; text-align: left; color: #f4f5f7; }
+.menu-item:hover { background: var(--tb-panel); }
+.mon-item small { margin-left: auto; font-size: 11.5px; font-weight: 600; color: #8b9099; }
+.mon-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mon-item.on { background: var(--tb-panel); }
+.mon-item.on::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff; flex: none; }
+#monMenu { min-width: 260px; }
+.menu-item.danger:hover { background: rgba(229,72,77,.16); color: #ff6b6b; }
+
+
+.main { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.main .screen { padding: 60px 40px 0; }
+.panel { width: min(460px, 100%); margin: 0 auto; }
+.panel h2 { font-size: 32px; }
+.panel .btn.wide { width: 100%; margin-top: 22px; height: 48px; }
+.mono { font-family: ui-monospace, Consolas, monospace; letter-spacing: .5px; }
+
+/* session stage: the remote screen goes here. The cursor over it is set by the host's cursor shape. */
+.main #session { padding: 0; }
+.stage { position: absolute; inset: 0; background: #000; display: grid; place-items: center; }
+.stagemsg { text-align: center; }
+.stagemsg h3 { font-size: 20px; margin-top: 18px; }
+.stagemsg p { color: var(--mut); margin-top: 6px; max-width: 360px; }
+.spinner { width: 34px; height: 34px; margin: 0 auto; border-radius: 50%; border: 2px solid var(--line2); border-top-color: #fff; animation: spin .8s linear infinite; }
+.hint { position: absolute; left: 16px; bottom: 14px; font: 12px ui-monospace, Consolas, monospace; color: var(--dim); }
+
+#remote { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; pointer-events: none; opacity: 0; transition: opacity .5s var(--ease); }
+.stage.live #remote { opacity: 1; }
+.stage.live .stagemsg, .stage.live .hint { opacity: 0; pointer-events: none; }
+.stagemsg, .hint { transition: opacity .4s; }
+
+/* quick settings menu (gear) */
+.tb-menu.qs { left: auto; right: 0; width: 240px; transform-origin: top right; }
+.qrow { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; font-weight: 600; font-size: 13.5px; color: #f4f5f7; }
+.qhint { padding: 0 10px 6px; font-size: 11.5px; color: #8b9099; }
+
+/* FPS / ping pills, top right, see-through glass */
+.hud { position: absolute; top: 14px; right: 16px; z-index: 25; display: none; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; font-family: Geist, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; }
+.app.in-session .hud { display: flex; }
+.hudpill { display: none; align-items: baseline; gap: 7px; padding: 5px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: #a3a8b0;
+  background: rgba(24, 24, 28, 0.38); border: 1px solid rgba(255, 255, 255, 0.12); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .3); opacity: .88; }
+.hudpill.on { display: flex; animation: appear .35s var(--ease); }
+.hudpill b { color: #fff; font-weight: 650; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.tb-menu { white-space: normal; }

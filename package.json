@@ -1,0 +1,11 @@
+{
+  "name": "flux-control",
+  "private": true,
+  "scripts": {
+    "check-ui": "node tools/check-ui.js",
+    "test": "node tools/test-mcp.js && node tools/test-code.js && node tools/test-features.js && node tools/test-ai.js && node tools/test-loader.js && node tools/check-ui.js",
+    "test:host": "node tools/test-host.js",
+    "build": "node tools/build.js",
+    "publish": "node tools/publish.js"
+  }
+}

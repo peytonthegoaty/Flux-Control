@@ -1,0 +1,6 @@
+{
+  "name": "flux-control",
+  "version": "0.12.1",
+  "description": "Flux Control PC client",
+  "main": "main.js"
+}

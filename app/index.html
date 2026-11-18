@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob:; worker-src blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src http: https: ws: wss:; media-src blob:">
+<link rel="stylesheet" href="../shared/style.css">
+<link rel="stylesheet" href="../shared/session.css">
+<link rel="stylesheet" href="client.css">
+<link rel="stylesheet" href="executor.css">
+<link rel="stylesheet" href="claude.css">
+<title>Flux Control</title>
+</head>
+<body>
+<div class="titlebar"><svg viewBox="29 17 34 44"><path d="M22.3 15.1H43.8C46.7 15.1 48.1 16.7 47.4 19.3L45.9 24.7C45.4 26.4 44.2 27.2 42.2 27.2H28.3V32.1H42.7C44.8 32.1 45.7 33.4 45 35.5L43.5 40.3C43 41.9 41.9 42.6 40.1 42.6H28.3V52.3C28.3 54.1 27.2 55.1 25.3 55.1H20.5C18.6 55.1 17.7 54.1 17.7 52.2V20C17.7 16.8 19.1 15.1 22.3 15.1Z" transform="translate(13 2)"/></svg><span>Flux Control</span></div>
+<div class="app" id="app">
+  <div class="fog"><i></i><i></i><i></i></div>
+  <nav class="side glass" id="side">
+    <div class="side-logo"><svg viewBox="29 17 34 44"><path d="M22.3 15.1H43.8C46.7 15.1 48.1 16.7 47.4 19.3L45.9 24.7C45.4 26.4 44.2 27.2 42.2 27.2H28.3V32.1H42.7C44.8 32.1 45.7 33.4 45 35.5L43.5 40.3C43 41.9 41.9 42.6 40.1 42.6H28.3V52.3C28.3 54.1 27.2 55.1 25.3 55.1H20.5C18.6 55.1 17.7 54.1 17.7 52.2V20C17.7 16.8 19.1 15.1 22.3 15.1Z" transform="translate(13.5, 3.75)"/></svg></div>
+    <i class="side-ind" id="sideInd"></i>
+    <button class="navbtn" data-page="connect" data-tip="Connect" aria-label="Connect"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+    <button class="navbtn" data-page="share" data-tip="Share" aria-label="Share"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></button>
+    <button class="navbtn" data-page="claude" id="navClaude" data-tip="Claude" aria-label="Claude" hidden><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></button>
+    <button class="navbtn" data-page="executor" id="navExecutor" data-tip="Executor" aria-label="Executor" hidden><svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg></button>
+    <span class="side-spacer"></span>
+    <button class="navbtn" data-page="settings" data-tip="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </nav>
+
+  <header class="pillbar settled" id="top">
+    <button class="pill-f" id="pillF" aria-label="Open the bar"><svg viewBox="29 17 34 44"><path d="M22.3 15.1H43.8C46.7 15.1 48.1 16.7 47.4 19.3L45.9 24.7C45.4 26.4 44.2 27.2 42.2 27.2H28.3V32.1H42.7C44.8 32.1 45.7 33.4 45 35.5L43.5 40.3C43 41.9 41.9 42.6 40.1 42.6H28.3V52.3C28.3 54.1 27.2 55.1 25.3 55.1H20.5C18.6 55.1 17.7 54.1 17.7 52.2V20C17.7 16.8 19.1 15.1 22.3 15.1Z" transform="translate(13.5, 3.75)"/></svg></button>
+    <div class="pill-body">
+      <div class="chipwrap" id="chipWrap">
+        <button class="account-chip" id="chip" aria-haspopup="menu"><span class="avatar"></span><span class="name" id="hostName">Not connected</span><svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="tb-menu" id="chipMenu">
+          <div class="menu-head"><div class="mh-name" id="mhName"></div><div class="mh-sub" id="viaChip"></div></div>
+          <div class="menu-sep"></div>
+          <button class="menu-item danger" id="btnDisc"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Disconnect</button>
+        </div>
+      </div>
+      <span class="pill-sep"></span>
+      <div class="chipwrap" id="monWrap" hidden>
+        <button class="tb-btn" id="btnMon" aria-label="Screens"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="13" height="10" rx="2"/><path d="M9 19h12a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-3M6 19h3"/></svg></button>
+        <div class="tb-menu" id="monMenu"></div>
+      </div>
+      <div class="chipwrap" id="setWrap">
+        <button class="tb-btn" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+        <div class="tb-menu qs" id="setMenu">
+          <div class="qrow"><span>Show FPS</span><div class="fx-toggle" id="tgFps"></div></div>
+          <div class="qrow"><span>Show ping</span><div class="fx-toggle" id="tgPing"></div></div>
+          <div class="menu-sep"></div>
+          <div class="qrow"><span>Mouse lock</span><div class="fx-toggle" id="tgLock"></div></div>
+          <div class="qrow"><span>Auto-capture in games</span><div class="fx-toggle" id="tgAuto"></div></div>
+          <div class="qhint">Mouse lock hides the pointer and sends raw movement. Auto-capture turns it on when you click a game that hides its cursor. Right Alt toggles mouse lock. Esc lets go.</div>
+        </div>
+      </div>
+      <button class="tb-btn" id="btnFs" aria-label="Fullscreen"></button>
+    </div>
+  </header>
+
+  <div class="hud" id="hud">
+    <div class="hudpill" id="hudFps"><span>FPS</span><b id="fpsVal">-</b></div>
+    <div class="hudpill" id="hudPing"><span>Ping</span><b id="pingVal">-</b></div>
+  </div>
+
+
+  <main class="main">
+    <section class="screen" id="connect">
+      <div class="panel">
+        <h2>Connect to a PC</h2>
+        <p class="sub">Paste the connection code from the PC you want to control.</p>
+        <div class="lbl">Connection code</div>
+        <div class="fx-field" id="codeField"><input class="fx-input mono" id="code" type="text" placeholder="FLUX-XXXXX-XXXXX-XXXXX" spellcheck="false" autocomplete="off"></div>
+        <div class="reveal" id="decoded"><div class="dchip" id="dchip"><i class="dot"></i><span id="dtext"></span></div></div>
+        <div class="reveal" id="pwBox">
+          <div class="lbl">Password</div>
+          <div class="fx-field" id="pwField"><input class="fx-input" id="pw" type="password" placeholder="Password for this PC" autocomplete="off"></div>
+        </div>
+        <button class="btn pri wide off" id="btnConnect">Connect</button>
+      </div>
+    </section>
+
+    <section class="screen top" id="share">
+      <div class="wide">
+        <h2>Share this PC</h2>
+        <p class="sub">Choose who you want to share with. You can change this any time.</p>
+        <div class="fx-scroll" data-scroll>
+          <div class="view">
+            <div class="cards two" id="shareWho" style="margin-top:14px"></div>
+            <div class="reveal tall" id="reachBox">
+              <div class="lbl">How should they reach you?</div>
+              <p class="note">Every option here is free. Each shows what it works with. Pick as many as you like.</p>
+              <div class="cards two" id="linkCards" style="margin-top:12px"></div>
+              <div class="reveal" id="tokenBox">
+                <div class="lbl">ngrok token</div>
+                <div class="tokrow">
+                  <div class="fx-field" id="tokField"><input class="fx-input" id="token" type="password" placeholder="Paste your free ngrok token" autocomplete="off"></div>
+                  <button class="btn" id="getToken">Get a free token</button>
+                </div>
+              </div>
+              <div class="lbl">Encoder</div>
+              <p class="note">The GPU gives the smoothest picture in games and leaves your CPU to the game. The CPU works on any PC. With both on, the GPU is used first and the CPU is the backup.</p>
+              <div class="row2" style="margin-top:12px">
+                <div class="trow"><div><div class="tt">Use GPU</div><div class="td">NVIDIA, AMD or Intel (needs ffmpeg)</div></div><div class="fx-toggle" id="encGpu"></div></div>
+                <div class="trow"><div><div class="tt">Use CPU</div><div class="td">Works everywhere</div></div><div class="fx-toggle" id="encCpu"></div></div>
+              </div>
+              <div class="lbl">CPU limit</div>
+              <div class="limitrow">
+                <div class="seg" id="limitMode"><button data-m="percent">Max percent</button><button data-m="cores">Cores</button></div>
+                <div class="limitslot" id="limitSlot"></div>
+                <button class="btn small" id="encRec" style="margin:0">Recommended</button>
+              </div>
+              <p class="note" id="encNote" style="margin-top:6px"></p>
+              <div class="row2">
+                <div>
+                  <div class="lbl">Password (required)</div>
+                  <div class="fx-field" id="spwField"><input class="fx-input" id="spw" type="password" placeholder="Anyone connecting needs this" maxlength="64" autocomplete="off"></div>
+                </div>
+                <div>
+                  <div class="lbl">Quality</div>
+                  <div class="fx-select" id="shareQuality" data-value="720p30" data-options='[["1080p60","1080p 60 fps"],["1080p30","1080p 30 fps"],["720p60","720p 60 fps"],["720p30","720p 30 fps"]]'></div>
+                </div>
+              </div>
+            </div>
+            <div class="reveal" id="webNote"><p class="note" style="margin-top:14px">Web sharing: anyone with the link and the password can open it in a browser. On Same Wi-Fi and UPnP the link is plain http, so the password is not encrypted on the way. The tunnels use https.</p></div>
+            <div style="height:90px"></div>
+          </div>
+        </div>
+        <div class="actions"><button class="btn pri off" id="startShare">Start sharing</button></div>
+      </div>
+    </section>
+
+    <section class="screen top" id="sharing">
+      <div class="wide">
+        <h2 id="shTitle">Starting…</h2>
+        <p class="sub" id="shSub">Setting things up.</p>
+        <div class="fx-scroll" data-scroll>
+          <div class="view"><div class="deps" id="shRows" style="max-width:none"></div><div style="height:20px"></div></div>
+        </div>
+        <div class="actions"><button class="btn pri" id="stopShare">Stop sharing</button></div>
+      </div>
+    </section>
+
+    <section class="screen top" id="settings">
+      <div class="wide">
+        <h2>Settings</h2>
+        <p class="sub">Flux Control <span id="verText"></span></p>
+        <div class="fx-scroll" data-scroll>
+          <div class="view">
+            <div class="lbl">Dev codes</div>
+            <p class="note">A dev code unlocks an extra feature on this PC. Remove the code to turn that feature off again.</p>
+            <div class="tokrow" style="margin-top:12px">
+              <div class="fx-field"><input class="fx-input mono" id="devCode" type="text" placeholder="Enter a dev code" spellcheck="false" autocomplete="off"></div>
+              <button class="btn pri off" id="addCode">Add code</button>
+            </div>
+            <div class="deps" id="codeRows" style="max-width:none;margin-top:16px"></div>
+            <div class="reveal" id="codesEmpty"><p class="note" style="margin-top:8px">No dev codes added.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen exec" id="executor">
+      <div class="exec-wrap">
+        <aside class="exec-side">
+          <div class="exec-head"><span class="exec-title">Explorer</span></div>
+          <button class="exec-ws" id="exWs" aria-label="Change workspace folder">
+            <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            <span class="wsn"><small>Workspace</small><span id="exWsName">No workspace</span></span>
+            <svg class="swap" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></svg>
+          </button>
+          <div class="fx-field exec-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg><input class="fx-input" id="exSearch" type="text" placeholder="Search scripts" spellcheck="false" autocomplete="off"></div>
+          <div class="fx-scroll" data-scroll>
+            <div class="view">
+              <div class="exec-sec">
+                <div class="exec-sech" data-toggle><svg class="exec-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg><span>Scripts</span><span class="count" id="exCount"></span></div>
+                <div class="exec-body"><div><div id="exScripts"></div><div class="exec-empty reveal" id="exEmptyScripts"><p>Saved scripts show up here.</p></div></div></div>
+              </div>
+              <div class="exec-sec">
+                <div class="exec-sech" data-toggle><svg class="exec-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg><span>Auto Execute</span><button class="exec-plus" id="exAutoCopy" aria-label="Copy the auto execute line">Copy all</button></div>
+                <div class="exec-body"><div><div id="exAuto"></div><div class="exec-empty reveal" id="exEmptyAuto"><p>Press the bolt on a script to add it here.</p></div></div></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+        <div class="exec-main">
+          <div class="exec-tabs" id="exTabs"></div>
+          <div class="exec-toolbar">
+            <div class="exec-crumb" id="exCrumb"></div>
+            <span class="grow"></span>
+            <button class="exec-tool" id="exClear"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Clear</button>
+            <button class="exec-tool" id="exSave"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></svg>Save</button>
+            <button class="exec-tool" id="exCopy"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11"/><path d="M5 15V4h11"/></svg>Copy</button>
+            <i class="exec-sep"></i>
+            <button class="exec-tool ai" id="exAiBtn"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>AI</button>
+            <button class="exec-tool outline" id="exRun"><svg viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></svg>Send</button>
+            <button class="exec-tool primary" id="exLoad"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1"/></svg>Copy load script</button>
+          </div>
+          <div class="exec-editor" id="exEditor"></div>
+          <div class="exec-console" id="exConsole">
+            <div class="con-head">
+              <svg class="con-ico" viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M12 16h7"/></svg><b>Console</b><span class="count" id="conCount"></span><span class="grow"></span>
+              <div class="fx-field con-search"><input class="fx-input" id="conSearch" type="text" placeholder="Filter output" spellcheck="false" autocomplete="off"></div>
+              <button class="con-tool" id="conClear">Clear</button>
+              <button class="con-tool sq" id="conToggle" aria-label="Collapse console"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+            </div>
+            <div class="con-scroll fx-scroll" data-scroll id="conLog"><div class="view"></div></div>
+          </div>
+        </div>
+        <div class="exec-ai" id="exAi"></div>
+        <div class="exec-status">
+          <span class="exec-conn" id="exConn"><i></i><b id="exConnText">Not connected</b></span>
+          <span class="grow"></span>
+          <span id="exPos"></span><span>Luau</span><span>UTF-8</span>
+        </div>
+        <div class="exec-gate" id="exGate">
+          <div class="gate-card">
+            <div class="gate-ico"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+            <h2>Set your workspace</h2>
+            <p>Pick your executor's workspace folder. Scripts are saved there, and it is how Flux Control reaches your executor.</p>
+            <button class="exec-tool primary big" id="exPick">Choose folder</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen claude" id="claude">
+      <div id="clRoot"></div>
+    </section>
+
+    <section class="screen" id="session">
+      <div class="stage" id="stage">
+        <video id="remote" muted autoplay playsinline disablePictureInPicture></video>
+        <div class="stagemsg">
+          <div class="spinner"></div>
+          <h3 id="stageTitle" class="shimmer">Waiting for the host's screen…</h3>
+          <p id="stageSub"></p>
+        </div>
+        <div class="hint" id="cursorHint"></div>
+      </div>
+    </section>
+  </main>
+  <div class="toasts" id="toasts"></div>
+</div>
+<script src="../shared/controls.js"></script>
+<script src="../shared/code.js"></script>
+<script src="../shared/features.js"></script>
+<script src="viewer.js"></script>
+<script src="../shared/hud.js"></script>
+<script src="luau.js"></script>
+<script src="executor.js"></script>
+<script src="claude.js"></script>
+<script src="client.js"></script>
+</body>
+</html>

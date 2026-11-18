@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="../../shared/style.css">
+<title>Flux Control Setup</title>
+</head>
+<body>
+<div class="win" id="win">
+  <div class="bar" id="drag">
+    <div class="brand"><svg class="logo" viewBox="29 17 34 44"><path d="M22.3 15.1H43.8C46.7 15.1 48.1 16.7 47.4 19.3L45.9 24.7C45.4 26.4 44.2 27.2 42.2 27.2H28.3V32.1H42.7C44.8 32.1 45.7 33.4 45 35.5L43.5 40.3C43 41.9 41.9 42.6 40.1 42.6H28.3V52.3C28.3 54.1 27.2 55.1 25.3 55.1H20.5C18.6 55.1 17.7 54.1 17.7 52.2V20C17.7 16.8 19.1 15.1 22.3 15.1Z" transform="translate(13.5, 3.75)"/></svg>Flux Control</div>
+    <div class="wbtns">
+      <button class="wbtn" id="bmin"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+      <button class="wbtn" id="bclose"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+    </div>
+  </div>
+  <div class="steps" id="steps"></div>
+
+  <div class="stage">
+    <!-- 0 startup: is it installed, is there an update? -->
+    <section class="screen" id="start">
+      <h2 class="shimmer">Checking for updates…</h2>
+      <p class="sub">Looking at your Flux Control install and the latest release.</p>
+    </section>
+
+    <!-- ready: installed and current -->
+    <section class="screen" id="ready">
+      <div class="big-check"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></div>
+      <h2 id="readyTitle">Flux Control is ready</h2>
+      <p class="sub" id="readySub"></p>
+    </section>
+
+    <!-- update available -->
+    <section class="screen" id="update">
+      <h2>An update is available</h2>
+      <p class="sub" id="updSub"></p>
+    </section>
+
+    <!-- updating -->
+    <section class="screen" id="updating">
+      <h2 id="updTitle" class="shimmer">Updating…</h2>
+      <p class="sub">Your settings stay as they are.</p>
+      <div class="deps" id="updRows"></div>
+    </section>
+
+    <!-- 1 welcome -->
+    <section class="screen" id="welcome">
+      <h1 id="hero">Your Computer,<br>Anywhere.</h1>
+      <p class="sub late" id="heroSub">Flux Control lets you reach your PC from any browser or device. Fast, private, and yours. Setup takes about a minute.</p>
+    </section>
+
+    <!-- 2 checking -->
+    <section class="screen" id="deps">
+      <h2 id="depsTitle" class="shimmer">Checking dependencies…</h2>
+      <p class="sub" id="depsSub">Looking for what Flux Control needs on this computer.</p>
+      <div class="deps" id="depList"></div>
+    </section>
+
+    <!-- 3 missing -->
+    <section class="screen" id="missing">
+      <h2>We found missing dependencies</h2>
+      <p class="sub">These are small downloads that install quietly into your user folder. That is why the installer itself stays tiny.</p>
+      <div class="deps" id="missList"></div>
+    </section>
+
+    <!-- 4 installing -->
+    <section class="screen" id="install">
+      <h2 id="instTitle">Installing…</h2>
+      <p class="sub" id="instSub">Hang tight, this only happens once.</p>
+      <div class="deps" id="instList"></div>
+    </section>
+
+    <!-- 8 done -->
+    <section class="screen" id="done">
+      <div class="big-check"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></div>
+      <h2 id="doneTitle">You're all set.</h2>
+      <p class="sub" id="doneSub">Flux Control is ready.</p>
+      <div class="chips" id="chips"></div>
+    </section>
+  </div>
+
+  <div class="foot">
+    <button class="btn ghost hide" id="back">Back</button>
+    <div class="r">
+      <button class="btn ghost hide" id="later">Install later</button>
+      <button class="btn pri" id="next">Next</button>
+    </div>
+  </div>
+  <div class="toasts" id="toasts"></div>
+</div>
+<script src="../../shared/controls.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
