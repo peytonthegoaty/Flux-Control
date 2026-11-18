@@ -305,33 +305,56 @@ const aiList = async () => {
   const show = oc.length || ocExe() || cfg.mode === 'api';   // show the entry so its mode can be configured/restarted
   return show ? [{ id: 'opencode', name: 'OpenCode', base: cfg.mode === 'api' ? cfg.base : '', models: oc, builtIn: true, mode: cfg.mode }, ...list] : list;
 };
-const ocSessions = new Map();   // our chat id -> OpenCode session id (CLI mode, only while the app runs)
-function startOpenCode(sender, d, text) {
+const ocSessions = new Map();   // our chat id -> OpenCode session id (CLI mode)
+async function startOpenCode(sender, d, text) {
   const cfg = readOcCfg();
   if (cfg.mode === 'api') return startOpenCodeApi(sender, d, text, cfg);
   const exe = ocExe(); if (!exe) return { error: 'OpenCode is not installed on this PC' };
   const model = String(d.model || '');
   if (!/^[\w.-]+\/[\w.:\/@-]{1,120}$/.test(model)) return { error: 'Unknown model' };
   if (text.length > 30000) return { error: 'That message is too long for OpenCode (30,000 characters at most)' };
-  const id = d.id && ocSessions.has(d.id) ? d.id : 'oc-' + crypto.randomUUID();
-  if (!ocSessions.has(id)) ocSessions.set(id, '');
+  const id = d.id && aiChats.has(d.id) ? d.id : 'oc-' + crypto.randomUUID();
+  const chat = aiChats.get(id) || { id, provider: 'opencode', name: 'OpenCode', model: '', title: '', ts: 0, msgs: [] };
+  chat.provider = 'opencode'; chat.name = 'OpenCode'; chat.model = model || chat.model;
+  if (!chat.title) chat.title = text.slice(0, 70);
+  chat.ts = Date.now();
+  aiChats.set(id, chat);
+  chat.msgs.push({ role: 'user', content: text.slice(0, 40000) });
+  saveAiChats(); broadcast('claude:changed', [id]);
   let cwd = String(d.cwd || '').trim(); if (!cwd || !fs.existsSync(cwd)) cwd = os.homedir();
   const args = ['run', '-m', model, '--format', 'json'];
-  if (ocSessions.get(id)) args.push('-s', ocSessions.get(id));
-  args.push(text);   // spawn passes it as one argument, never through a shell
-  let child; try { child = spawn(exe, args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); } catch (e) { return { error: 'Could not start OpenCode: ' + e.message }; }
+  if (d.mcp) args.push('--auto');
+  const ocSid = chat.ocSid || ocSessions.get(id);
+  if (ocSid) args.push('-s', ocSid);
+  let prompt = text;
+  let mcpCfg = null;
+  if (d.mcp) {
+    try {
+      const url = await mcp.ensure();
+      mcpCfg = path.join(os.tmpdir(), 'flux-oc-mcp-' + process.pid + '-' + Date.now() + '.json');
+      fs.writeFileSync(mcpCfg, JSON.stringify({ mcp: { 'flux-executor': { type: 'remote', url, enabled: true } } }));
+      prompt = AI_PROMPT + '\n\nUser request: ' + text;
+    } catch (e) { return { error: 'Could not start the game tools: ' + e.message }; }
+  }
+  args.push(prompt);   // spawn passes it as one argument, never through a shell
+  const env = { ...process.env };
+  if (mcpCfg) env.OPENCODE_CONFIG = mcpCfg;
+  let child; try { child = spawn(exe, args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env }); } catch (e) { try { if (mcpCfg) fs.rmSync(mcpCfg, { force: true }); } catch {} return { error: 'Could not start OpenCode: ' + e.message }; }
   try { child.stdin.end(); } catch {}
   const key = crypto.randomUUID(), t0 = Date.now();
   runs.set(key, { sid: id, child });
   const send = (o) => { if (!sender.isDestroyed()) sender.send('claude:line', key, o); };
   const errs = [];
   let hadErr = null;
+  const textParts = [];
   readline.createInterface({ input: child.stdout }).on('line', (l) => {
     let o; try { o = JSON.parse(l); } catch { return; }
-    if (o.sessionID) ocSessions.set(id, o.sessionID);
+    if (o.sessionID) { chat.ocSid = o.sessionID; ocSessions.set(id, o.sessionID); }
     const p = o.part || {};
     if ((o.type === 'text' || p.type === 'text') && (p.text || o.text)) {
-      send({ type: 'assistant', message: { content: [{ type: 'text', text: p.text || o.text }] } });
+      const t = p.text || o.text;
+      textParts.push(t);
+      send({ type: 'assistant', message: { content: [{ type: 'text', text: t }] } });
     } else if (p.type === 'tool' || o.type === 'tool_use') {
       const st = p.state || {};
       send({ type: 'assistant', message: { content: [{ type: 'tool_use', id: p.callID || p.id, name: p.tool || 'tool', input: st.input || {} }] } });
@@ -346,6 +369,11 @@ function startOpenCode(sender, d, text) {
   child.on('error', (e) => errs.push(e.message || String(e)));
   child.on('close', (code) => {
     runs.delete(key);
+    try { if (mcpCfg) fs.rmSync(mcpCfg, { force: true }); } catch {}
+    const outText = textParts.join('\n\n').trim();
+    if (outText) chat.msgs.push({ role: 'assistant', content: outText });
+    chat.ts = Date.now();
+    saveAiChats(); broadcast('claude:changed', [id]);
     const errMsg = hadErr || errs.slice(-3).join('\n') || 'OpenCode stopped (' + code + ')';
     send(code === 0 && !hadErr ? { type: 'result', subtype: 'success', duration_ms: Date.now() - t0 } : { type: 'result', subtype: 'error', is_error: true, result: errMsg });
     send({ type: 'exit', code });
