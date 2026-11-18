@@ -264,6 +264,8 @@ function onHost(ev) {
     if (share.who.includes('web')) out.appendChild(fx.el('div', 'shnote', 'Open the link in any browser and enter the password.'));
   } else if (ev.t === 'notice') {
     fx.toast(ev.msg);
+  } else if (ev.t === 'elev') {
+    if (ev.on) fx.toast('The focused app runs as administrator — Windows blocks control of it. Restart Flux Control as admin to fix it.');
   } else if (ev.t === 'fatal') {
     stopped();
     if (ev.fix === 'ffmpeg') offerFfmpeg(); else fx.toast(ev.err);

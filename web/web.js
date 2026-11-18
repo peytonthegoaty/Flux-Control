@@ -11,6 +11,8 @@ const winApi = {
   claudeChats: call('claude:chats'), claudeHistory: call('claude:history'), claudeSend: call('claude:send'), claudeStop: call('claude:stop'),
   claudeAuth: call('claude:auth'), claudeHome: call('claude:home'), claudeUsage: call('claude:usage'), claudePickDir: async () => null,
   aiList: call('ai:list'), aiAdd: call('ai:add'), aiRemove: call('ai:remove'),
+  appsList: call('apps:list'), appsClose: call('apps:close'), appsFront: call('apps:front'), appsElev: call('apps:elev'), appsElevState: call('apps:elev-state'),
+  onAppsElev: (f) => Viewer.on('apps:elev', f),
   onClaude: (f) => Viewer.on('claude:line', f), onClaudeChanged: (f) => Viewer.on('claude:changed', f), onClaudeUsage: (f) => Viewer.on('claude:usage', f),
 };
 function showExec(on) {
@@ -30,13 +32,55 @@ function show(id) {
   requestAnimationFrame(() => requestAnimationFrame(() => current === id && next.classList.add('active')));
   current = id;
   app.classList.toggle('in-session', id === 'session');
+  $('#winWrap').hidden = id !== 'session';
   if (id !== 'session') $('#hostName').textContent = 'Not connected';
   else pillCtl.peek(3200);
 }
 fx.popover($('#chipWrap'), $('#chip'));
-const pillCtl = fx.pill($('#top'), $('#pillF'), () => $('#chipWrap').classList.contains('open') || $('#setWrap').classList.contains('open') || $('#monWrap').classList.contains('open'));
+const pillCtl = fx.pill($('#top'), $('#pillF'), () => $('#chipWrap').classList.contains('open') || $('#setWrap').classList.contains('open') || $('#monWrap').classList.contains('open') || $('#winWrap').classList.contains('open'));
 fx.popover($('#setWrap'), $('#btnSettings'));
 Hud.init();
+
+// ---- apps on that PC: the window list, close, and bring-to-front onto the screen you are watching
+fx.popover($('#winWrap'), $('#btnWins'));
+const winMenu = $('#winMenu');
+function drawWins(list) {
+  const cur = Hud.cur ? Hud.cur() : 0;
+  winMenu.innerHTML = '<div class="menu-head"><div class="mh-name">Apps on that PC</div><div class="mh-sub">Close an app or bring it to the screen you watch</div></div><div class="menu-sep"></div>';
+  if (!Array.isArray(list) || !list.length) { winMenu.insertAdjacentHTML('beforeend', '<div class="win-empty">No apps found.</div>'); return; }
+  list.forEach((a) => {
+    const row = document.createElement('div'); row.className = 'win-item';
+    row.innerHTML = '<div class="wi-txt"><span class="wi-title"></span><small class="wi-sub"></small></div><button class="wi-btn" data-a="front">Front</button><button class="wi-btn sq" data-a="x" aria-label="Close app"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
+    row.querySelector('.wi-title').textContent = a.title || a.exe || 'App';
+    const elsewhere = Number.isInteger(a.mon) && a.mon >= 0 && a.mon !== cur;
+    row.querySelector('.wi-sub').textContent = (a.exe || '') + (elsewhere ? ' · screen ' + (a.mon + 1) : '');
+    row.querySelector('[data-a="front"]').onclick = () => { winApi.appsFront(a.hwnd, cur); fx.toast('Bringing to front'); };
+    row.querySelector('[data-a="x"]').onclick = async () => {
+      if (await fx.ask({ title: 'Close app?', text: (a.title || a.exe || 'This app') + ' will be asked to close on the PC.', ok: 'Close' })) {
+        winApi.appsClose(a.hwnd); setTimeout(refreshWins, 800);
+      }
+    };
+    winMenu.appendChild(row);
+  });
+}
+async function refreshWins() {
+  if (!Viewer.active()) return;
+  const r = await winApi.appsList();
+  drawWins(r && r.list);
+}
+$('#btnWins').addEventListener('click', () => { if ($('#winWrap').classList.contains('open')) refreshWins(); });
+
+// ---- elevation warning: the focused app is admin, so Windows blocks control of it
+winApi.onAppsElev((on) => { $('#elevBar').hidden = !on; });
+$('#btnElev').onclick = async () => {
+  const b = $('#btnElev');
+  b.disabled = true; b.textContent = 'Restarting…';
+  await winApi.appsElev();
+  fx.toast('Accept the Windows permission prompt. Flux Control restarts and you can reconnect.');
+  setTimeout(() => { b.disabled = false; b.textContent = 'Restart as admin'; }, 8000);
+};
+$('#elevHide').onclick = () => { $('#elevBar').hidden = true; };
+
 let hinted = false;
 
 // ---- top bar: fullscreen toggle (icon swaps) and auto-hide while fullscreen
@@ -89,6 +133,7 @@ btn.onclick = async () => {
     });
     $('#hostName').textContent = location.host;
     Viewer.call('app:features').then((f) => { $('#btnExec').hidden = !(f || []).includes('roblox-executor'); }).catch(() => {});
+    Viewer.call('apps:elev-state').then((on) => { $('#elevBar').hidden = !on; }).catch(() => {});
     $('#mhName').textContent = location.host;
     $('#viaChip').textContent = 'Web';
     stage.classList.remove('live');
@@ -101,6 +146,7 @@ btn.onclick = async () => {
 function endSession(already) {
   if (!already) Viewer.close();
   hinted = false; Hud.setLock(false); showExec(false); $('#btnExec').hidden = true; Hud.setScreen({ mons: [] });
+  $('#winWrap').hidden = true; $('#winWrap').classList.remove('open'); $('#elevBar').hidden = true;
   stage.classList.remove('live'); stage.style.cursor = '';
   if (document.fullscreenElement) document.exitFullscreen();
   pw.value = ''; sync();

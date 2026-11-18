@@ -49,7 +49,10 @@ function create() {
   }
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// a relaunch as administrator (--elev) starts while the old instance is still quitting: wait for its lock instead of quitting
+let locked = false;
+for (let i = 0; i < 80 && !(locked = app.requestSingleInstanceLock()); i++) { const t = Date.now() + 250; while (Date.now() < t); }
+if (!locked) app.quit();
 else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(create);
@@ -90,7 +93,8 @@ ipcMain.on('win:quit', () => { closing = true; app.quit(); });
 let features = [];
 ipcMain.on('app:features', (_e, f) => { if (Array.isArray(f)) features = f.filter((x) => typeof x === 'string'); });
 const WEB_OK = new Set(['claude:chats', 'claude:history', 'claude:send', 'claude:stop', 'claude:auth', 'claude:home', 'claude:usage', 'ai:list', 'ai:add', 'ai:remove',
-  'scripts:list', 'scripts:read', 'scripts:write', 'scripts:delete', 'bridge:loader', 'bridge:state', 'bridge:send', 'workspace:get']);
+  'scripts:list', 'scripts:read', 'scripts:write', 'scripts:delete', 'bridge:loader', 'bridge:state', 'bridge:send', 'workspace:get',
+  'apps:list', 'apps:close', 'apps:front', 'apps:elev', 'apps:elev-state']);
 const toWeb = (child, conn, msg) => { try { child.stdin.write(`to ${conn} ${JSON.stringify(msg)}
 `); } catch {} };
 async function webRpc(child, m) {
@@ -105,6 +109,29 @@ async function webRpc(child, m) {
   toWeb(child, m.c, { t: 'rpc', id: m.id, r, err });
 }
 claudeMain.addSink((ch, ...a) => { if (host && (ch === 'claude:changed' || ch === 'claude:usage')) toWeb(host, 0, { t: 'push', ch, a }); });
+// ---- window list / elevation: questions for the Rust host (it owns the real windows) and the one-click admin restart
+let elevOn = false;
+ipcMain.handle('apps:elev-state', () => elevOn);
+let appReq = 0; const appPending = new Map();
+function askHost(msg, ms = 4000) {
+  const h = host; if (!h) return Promise.resolve(null);
+  const id = ++appReq;
+  return new Promise((res) => {
+    appPending.set(id, { res, t: setTimeout(() => { if (appPending.delete(id)) res(null); }, ms) });
+    try { h.stdin.write(JSON.stringify({ t: 'apps', id, ...msg }) + '\n'); } catch { if (appPending.delete(id)) res(null); }
+  });
+}
+ipcMain.handle('apps:list', () => askHost({ act: 'list' }));
+ipcMain.handle('apps:close', (_e, hwnd) => askHost({ act: 'close', hwnd: +hwnd }));
+ipcMain.handle('apps:front', (_e, hwnd, mon) => askHost({ act: 'front', hwnd: +hwnd, mon: Math.max(0, +mon || 0) }));
+// relaunches Flux Control as administrator (fixes controlling admin apps) and quits this instance once the new one is up
+ipcMain.handle('apps:elev', () => {
+  if (process.argv.includes('--elev')) return { ok: false, err: 'Already running as administrator' };
+  const parts = [...process.argv.slice(1), '--elev'].map((a) => `'${a.replace(/'/g, "''")}'`).join(',');
+  spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', `Start-Process -FilePath '${process.execPath.replace(/'/g, "''")}' -ArgumentList ${parts} -Verb RunAs`], { windowsHide: true, detached: true, stdio: 'ignore' }).unref();
+  setTimeout(() => { closing = true; app.quit(); }, 2500);
+  return { ok: true };
+});
 ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('app:cores', () => os.cpus().length);
 ipcMain.handle('win:isFullscreen', () => !!win && win.isFullScreen());
@@ -147,9 +174,16 @@ ipcMain.handle('host:start', (_e, cfg) => {
   readline.createInterface({ input: child.stdout }).on('line', (l) => {
     let m; try { m = JSON.parse(l); } catch { return; }
     if (m.t === 'rpc') return webRpc(child, m);
+    // the host's answers to the window list / close / front commands, and the elevation warning push
+    if (m.t === 'apps-res') {
+      const p = appPending.get(m.id);
+      if (p) { appPending.delete(m.id); clearTimeout(p.t); p.res(m); }
+      return;
+    }
+    if (m.t === 'elev') { elevOn = !!m.on; toWeb(child, 0, { t: 'push', ch: 'apps:elev', a: [elevOn] }); }
     try { win && win.webContents.send('host:event', m); } catch {}
   });
-  child.on('exit', () => { if (host === child) host = null; win && !win.isDestroyed() && win.webContents.send('host:event', { t: 'exit' }); });
+  child.on('exit', () => { if (host === child) host = null; elevOn = false; win && !win.isDestroyed() && win.webContents.send('host:event', { t: 'exit' }); });
   return { ok: true };
 });
 ipcMain.handle('host:stop', () => {

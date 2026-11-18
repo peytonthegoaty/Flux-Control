@@ -26,6 +26,7 @@ Built and in: the web client, the Rust streaming backend and the AI chats (Claud
 - Run the client from source with any Electron: `electron app` (it finds `host/target/release/flux-host.exe`).
 - Codes: `FLUX-...` (see `shared/code.js`). Web links will not use codes.
 - AI chats: the Claude page and the Executor's AI mode list the Claude Code chats saved on this PC and can also talk to custom AIs (any OpenAI-compatible base URL + key, added with + AI). Custom-AI chats are kept in `ai-chats.json` in the Flux folder and show up in the same list; the web client uses the same chats through the host relay.
+- Window list in the web client: the pillbar's apps button lists the open apps on the shared PC — close one (it gets the same X as clicking its own close button) or bring it to front onto the screen you are watching. A banner appears when the focused app runs as administrator (Windows blocks input into admin apps from a normal process): one click relaunches Flux Control as administrator.
 
 ## Releases and updates
 

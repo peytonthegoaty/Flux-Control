@@ -1,5 +1,6 @@
 //! flux-host: shares one of this PC's screens with Flux Control clients.
 //! Config arrives as ONE json line on stdin; events leave as json lines on stdout; closing stdin stops everything.
+mod apps;
 mod capture;
 mod gpu;
 mod input;
@@ -190,6 +191,7 @@ fn main() {
         .map(|(i, m)| json!({"i": i, "name": match m.name().ok().filter(|n| n.chars().any(|c| c.is_ascii_alphabetic())) { Some(n) => format!("Display {} · {}", i + 1, n.trim()), None => format!("Display {}", i + 1) }, "w": m.width().unwrap_or(0), "h": m.height().unwrap_or(0), "primary": *m == primary}))
         .collect();
     let first = c["monitor"].as_u64().map(|i| i as usize).filter(|i| *i < mons.len()).or_else(|| mons.iter().position(|m| *m == primary)).unwrap_or(0);
+    let rects: Vec<(i32, i32, i32, i32)> = mons.iter().map(mon_rect).collect();
     // a game on this PC should not starve the encoder
     unsafe {
         use windows::Win32::System::Threading::{GetCurrentProcess, SetPriorityClass, ABOVE_NORMAL_PRIORITY_CLASS};
@@ -303,6 +305,25 @@ fn main() {
         });
     }
 
+    // the app the viewer is focusing is elevated: Windows blocks input into it until Flux Control itself runs as admin
+    if std::env::var("FLUX_NO_ELEVWATCH").is_err() && !apps::host_elevated() {
+        let run = run.clone();
+        std::thread::spawn(move || {
+            let mut prev = apps::fg_elevated();
+            if prev {
+                emit(json!({"t": "elev", "on": true}));
+            }
+            while run.load(Relaxed) {
+                std::thread::sleep(Duration::from_millis(700));
+                let on = apps::fg_elevated();
+                if on != prev {
+                    prev = on;
+                    emit(json!({"t": "elev", "on": on}));
+                }
+            }
+        });
+    }
+
     emit(json!({"t": "started", "w": w, "h": h, "fps": fps, "port": port, "cores": cores, "threads": threads, "encoder": encoder_name, "mbps": (bps as f64 / 1e5).round() / 10.0}));
 
     let ctx = Arc::new(Ctx {
@@ -325,6 +346,22 @@ fn main() {
         }
         if let Some(m) = l.strip_prefix("retry ") {
             start_method(m.trim(), &ctx);
+        }
+        // one json line: {"t":"apps","id":N,"act":"list"|"close"|"front",...} -> one {"t":"apps-res","id":N,...} back
+        if l.starts_with('{') {
+            if let Ok(m) = serde_json::from_str::<Value>(l) {
+                if m["t"] == "apps" {
+                    let id = m["id"].clone();
+                    let rep = |list: Value, ok: bool| emit(json!({"t": "apps-res", "id": id, "list": list, "ok": ok}));
+                    match m["act"].as_str() {
+                        Some("list") => rep(apps::list(&rects), true),
+                        Some("close") => rep(Value::Null, apps::close(m["hwnd"].as_i64().unwrap_or(0) as isize)),
+                        Some("front") => rep(Value::Null, apps::front(m["hwnd"].as_i64().unwrap_or(0) as isize, &rects, m["mon"].as_u64().unwrap_or(0) as usize)),
+                        _ => rep(Value::Null, false),
+                    }
+                }
+            }
+            continue;
         }
         // "to <conn> <json>": the app's answer or event for one web client (conn 0 = all of them)
         if let Some((c, j)) = l.strip_prefix("to ").and_then(|r| r.split_once(' ')) {

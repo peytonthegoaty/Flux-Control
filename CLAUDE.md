@@ -27,5 +27,5 @@ Shared pieces live in `shared/controls.js` and `shared/style.css` (used by the i
 - `installer/`  Rust setup app + its HTML UI (`installer/ui/`)
 - `app/`        Electron PC client: connect, share, session view (`viewer.js` plays the stream and sends input), Claude chats (`claude-main.js` runs the Claude Code CLI; custom AIs speak any OpenAI-compatible API)
 - `host/`       Rust sharing backend `flux-host.exe` (screen capture, H.264, WebSocket server, input, tunnels). Electron starts it
-- Web client: `web/`, embedded in `flux-host.exe` and served by it — password, the session viewer and the Executor (with its AI mode) in a browser
+- Web client: `web/`, embedded in `flux-host.exe` and served by it — password, the session viewer and the Executor (with its AI mode) in a browser. The pillbar has an apps button: list of open apps on that PC with Close and Front (front moves the window onto the screen the viewer watches). A banner warns when the focused app is elevated (Windows blocks input into it) with a one-click restart of Flux Control as administrator (`apps:elev`, `--elev` argv makes the relaunch wait for the old instance's lock)
 - `tools/check-ui.js`  enforces the rule above; `tools/test-code.js` tests the code format; `tools/test-host.js` runs the host end to end

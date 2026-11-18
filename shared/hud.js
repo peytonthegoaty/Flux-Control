@@ -48,5 +48,5 @@ const Hud = (() => {
   }
   /** the viewer reports when the lock really starts or ends (Esc releases it) */
   const setLock = (v) => $('#tgLock').classList.toggle('on', !!v);
-  return { init, setLock, setScreen, auto: () => on.auto };
+  return { init, setLock, setScreen, auto: () => on.auto, cur: () => monCur };
 })();
