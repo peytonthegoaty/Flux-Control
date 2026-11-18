@@ -164,7 +164,7 @@ function wgo(w) {
   document.querySelectorAll('.wnav').forEach((b) => b.classList.toggle('on', b.dataset.w === w));
   showExec(w === 'exec');
   $('#webClaude').classList.toggle('open', w === 'claude');
-  if (w === 'claude') { if (!webClaude) webClaude = ClaudeChat($('#webClRoot')); webClaude.open(); }
+  if (w === 'claude') { if (!webClaude) webClaude = ClaudeChat($('#webClRoot'), { customAi: true }); webClaude.open(); }
 }
 document.querySelectorAll('.wnav').forEach((b) => (b.onclick = () => wgo(b.dataset.w)));
 // Right Ctrl hides and shows the top bar; the sidebar follows it
