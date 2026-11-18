@@ -48,10 +48,11 @@
         <div class="tb-menu qs" id="setMenu">
           <div class="qrow"><span>Show FPS</span><div class="fx-toggle" id="tgFps"></div></div>
           <div class="qrow"><span>Show ping</span><div class="fx-toggle" id="tgPing"></div></div>
+          <div class="qrow"><span>Show mouse lock</span><div class="fx-toggle" id="tgLockPill"></div></div>
           <div class="menu-sep"></div>
           <div class="qrow"><span>Mouse lock</span><div class="fx-toggle" id="tgLock"></div></div>
           <div class="qrow"><span>Auto-capture in games</span><div class="fx-toggle" id="tgAuto"></div></div>
-          <div class="qhint">Mouse lock hides the pointer and sends raw movement. Auto-capture turns it on when you click a game that hides its cursor. Right Alt toggles mouse lock. Esc lets go.</div>
+          <div class="qhint">Mouse lock hides the pointer and sends raw movement. Auto-capture turns it on when you click a game that hides its cursor. Right Alt toggles mouse lock, Right Ctrl hides or shows this bar. Esc lets go.</div>
         </div>
       </div>
       <button class="tb-btn" id="btnFs" aria-label="Fullscreen"></button>
@@ -60,6 +61,7 @@
 
   <div class="hud" id="hud">
     <div class="hudpill" id="hudFps"><span>FPS</span><b id="fpsVal">-</b></div>
+    <div class="hudpill" id="hudLock"><span>Mouse lock</span><b>On</b></div>
     <div class="hudpill" id="hudPing"><span>Ping</span><b id="pingVal">-</b></div>
   </div>
 

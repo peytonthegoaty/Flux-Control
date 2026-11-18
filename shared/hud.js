@@ -3,12 +3,13 @@
 const Hud = (() => {
   const KEY = 'fluxHud2';   // new key: everyone starts with FPS and ping on
   const $ = (s) => document.querySelector(s);
-  let on = { fps: true, ping: true, auto: true };
+  let on = { fps: true, ping: true, auto: true, lockpill: true }, locked = false;
   try { on = { ...on, ...JSON.parse(localStorage.getItem(KEY)) }; } catch {}
 
   function paint() {
     $('#hudFps').classList.toggle('on', on.fps);
     $('#hudPing').classList.toggle('on', on.ping);
+    $('#hudLock').classList.toggle('on', on.lockpill && locked);   // between FPS and ping, only while mouse lock is on
   }
   function update() {
     const s = Viewer.stats();
@@ -21,7 +22,7 @@ const Hud = (() => {
       t.classList.toggle('on', on[key]);
       fx.toggle(t, (v) => { on[key] = v; try { localStorage.setItem(KEY, JSON.stringify(on)); } catch {} paint(); });
     };
-    set('#tgFps', 'fps'); set('#tgPing', 'ping'); set('#tgAuto', 'auto');
+    set('#tgFps', 'fps'); set('#tgPing', 'ping'); set('#tgLockPill', 'lockpill'); set('#tgAuto', 'auto');
     fx.toggle($('#tgLock'), (v) => Viewer.lock(v));
     fx.popover($('#monWrap'), $('#btnMon'));
     paint();
@@ -47,6 +48,6 @@ const Hud = (() => {
     });
   }
   /** the viewer reports when the lock really starts or ends (Esc releases it) */
-  const setLock = (v) => $('#tgLock').classList.toggle('on', !!v);
+  const setLock = (v) => { locked = !!v; $('#tgLock').classList.toggle('on', locked); paint(); };
   return { init, setLock, setScreen, auto: () => on.auto, cur: () => monCur };
 })();

@@ -92,7 +92,7 @@ ipcMain.on('win:quit', () => { closing = true; app.quit(); });
 // ---- web clients: the Executor page (and its AI mode) works in the browser too, through the host
 let features = [];
 ipcMain.on('app:features', (_e, f) => { if (Array.isArray(f)) features = f.filter((x) => typeof x === 'string'); });
-const WEB_OK = new Set(['claude:chats', 'claude:history', 'claude:send', 'claude:stop', 'claude:auth', 'claude:home', 'claude:usage', 'ai:list', 'ai:add', 'ai:remove',
+const WEB_OK = new Set(['claude:chats', 'claude:history', 'claude:send', 'claude:stop', 'claude:auth', 'claude:home', 'claude:usage', 'claude:plugins', 'fs:dirs', 'ai:list', 'ai:add', 'ai:remove', 'ai:opencode-config', 'ai:opencode-set', 'ai:opencode-restart',
   'scripts:list', 'scripts:read', 'scripts:write', 'scripts:delete', 'bridge:loader', 'bridge:state', 'bridge:send', 'workspace:get',
   'apps:list', 'apps:close', 'apps:front', 'apps:elev', 'apps:elev-state']);
 const toWeb = (child, conn, msg) => { try { child.stdin.write(`to ${conn} ${JSON.stringify(msg)}
@@ -132,6 +132,69 @@ ipcMain.handle('apps:elev', () => {
   setTimeout(() => { closing = true; app.quit(); }, 2500);
   return { ok: true };
 });
+// ---- updates: GitHub is checked every 30 s. A new version is downloaded and verified in the background, then the app swaps
+// its own files and restarts; if this PC was being shared, sharing starts again with the same settings and password.
+const REPO = 'peytonthegoaty/Flux-Control';
+let lastHostCfg = null, pendingUpdate = null, checking = false;
+const newerVer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+const installed = () => path.resolve(__dirname, '..').toLowerCase() === path.resolve(fluxHome()).toLowerCase();   // only the installed copy updates itself
+async function checkUpdate() {
+  if (pendingUpdate || checking || process.env.FLUX_SHOT || !installed()) return;
+  checking = true;
+  try {
+    const r = await fetch(`https://github.com/${REPO}/releases/latest`, { redirect: 'manual' });
+    const tag = ((r.headers.get('location') || '').match(/\/tag\/v([\d.]+)$/) || [])[1];
+    if (!tag || !newerVer(tag, app.getVersion())) return;
+    const url = `https://github.com/${REPO}/releases/download/v${tag}/flux-control-payload.zip`;
+    const [zip, sum] = await Promise.all([fetch(url).then((x) => (x.ok ? x.arrayBuffer() : Promise.reject(new Error('download ' + x.status)))), fetch(url + '.sha256').then((x) => x.text())]);
+    const buf = Buffer.from(zip);
+    if (require('crypto').createHash('sha256').update(buf).digest('hex') !== sum.trim().split(/\s+/)[0]) throw new Error('checksum mismatch');
+    const dir = path.join(fluxHome(), 'update-' + tag), file = path.join(fluxHome(), 'update-' + tag + '.zip');
+    fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, buf);
+    await new Promise((ok, bad) => require('child_process').execFile('C:\\Windows\\System32\\tar.exe', ['-xf', file, '-C', dir], { windowsHide: true }, (e) => (e ? bad(e) : ok())));
+    fs.rmSync(file, { force: true });
+    if (!fs.existsSync(path.join(dir, 'app', 'main.js'))) throw new Error('the update is incomplete');
+    pendingUpdate = { tag, dir };
+    if (win && !win.isDestroyed()) win.webContents.send('update:ready', tag);
+  } catch {} finally { checking = false; }
+}
+setTimeout(checkUpdate, 10000); setInterval(checkUpdate, 30000);
+ipcMain.on('update:apply', async () => {
+  const u = pendingUpdate; if (!u) return;
+  const h = fluxHome(), moved = [];
+  try {
+    if (host && lastHostCfg) {   // stop sharing for the restart; it comes back on its own
+      const box = safeStorageOk() ? 'enc:' + require('electron').safeStorage.encryptString(JSON.stringify(lastHostCfg)).toString('base64') : JSON.stringify(lastHostCfg);
+      fs.writeFileSync(path.join(h, 'resume.json'), JSON.stringify({ at: Date.now(), box }));
+      const hh = host; try { hh.stdin.write('stop\n'); } catch {}
+      await new Promise((r) => { hh.once('exit', r); setTimeout(() => { try { hh.kill(); } catch {} r(); }, 3000); });
+    }
+    for (const d of ['app', 'shared']) {
+      fs.rmSync(path.join(h, d + '.old'), { recursive: true, force: true });
+      fs.renameSync(path.join(h, d), path.join(h, d + '.old')); moved.push(d);
+      fs.renameSync(path.join(u.dir, d), path.join(h, d));
+    }
+    const hostNew = path.join(u.dir, 'bin', 'flux-host.exe');
+    if (fs.existsSync(hostNew)) fs.copyFileSync(hostNew, path.join(h, 'bin', 'flux-host.exe'));
+    fs.writeFileSync(path.join(h, 'version.txt'), u.tag);
+  } catch (e) {   // put the working version back
+    for (const d of moved) { try { fs.rmSync(path.join(h, d), { recursive: true, force: true }); fs.renameSync(path.join(h, d + '.old'), path.join(h, d)); } catch {} }
+    if (win && !win.isDestroyed()) win.webContents.send('update:failed', e.message);
+    return;
+  }
+  closing = true; app.relaunch(); app.exit(0);
+});
+const safeStorageOk = () => { try { return require('electron').safeStorage.isEncryptionAvailable(); } catch { return false; } };
+ipcMain.handle('app:resume', () => {   // once, right after an update restart
+  const f = path.join(fluxHome(), 'resume.json');
+  try {
+    const v = JSON.parse(fs.readFileSync(f, 'utf8')); fs.rmSync(f, { force: true });
+    if (Date.now() - v.at > 5 * 60000) return null;
+    return JSON.parse(String(v.box).startsWith('enc:') ? require('electron').safeStorage.decryptString(Buffer.from(v.box.slice(4), 'base64')) : v.box);
+  } catch { return null; }
+});
+// leftovers of the last update
+setTimeout(() => { for (const d of ['app.old', 'shared.old']) try { fs.rmSync(path.join(fluxHome(), d), { recursive: true, force: true }); } catch {} }, 15000);
 ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('app:cores', () => os.cpus().length);
 ipcMain.handle('win:isFullscreen', () => !!win && win.isFullScreen());
@@ -168,6 +231,7 @@ ipcMain.handle('host:start', (_e, cfg) => {
   };
   if (!clean.gpu && !clean.cpu) return { ok: false, err: 'Turn on the GPU or the CPU encoder' };
   if (!clean.password) return { ok: false, err: 'A password is required' };
+  lastHostCfg = clean;   // kept so an update restart can share again with the same settings
   const child = spawn(exe, [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
   host = child;
   child.stdin.write(JSON.stringify(clean) + '\n');

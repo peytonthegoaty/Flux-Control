@@ -34,16 +34,16 @@
         <button class="tb-btn" id="btnWins" aria-label="Apps on that PC"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M2 9h20M8 21h8"/></svg></button>
         <div class="tb-menu" id="winMenu"></div>
       </div>
-      <button class="tb-btn" id="btnExec" aria-label="Executor" hidden><svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg></button>
       <div class="chipwrap" id="setWrap">
         <button class="tb-btn" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
         <div class="tb-menu qs" id="setMenu">
           <div class="qrow"><span>Show FPS</span><div class="fx-toggle" id="tgFps"></div></div>
           <div class="qrow"><span>Show ping</span><div class="fx-toggle" id="tgPing"></div></div>
+          <div class="qrow"><span>Show mouse lock</span><div class="fx-toggle" id="tgLockPill"></div></div>
           <div class="menu-sep"></div>
           <div class="qrow"><span>Mouse lock</span><div class="fx-toggle" id="tgLock"></div></div>
           <div class="qrow"><span>Auto-capture in games</span><div class="fx-toggle" id="tgAuto"></div></div>
-          <div class="qhint">Mouse lock hides the pointer and sends raw movement. Auto-capture turns it on when you click a game that hides its cursor. Right Alt toggles mouse lock. Esc lets go.</div>
+          <div class="qhint">Mouse lock hides the pointer and sends raw movement. Auto-capture turns it on when you click a game that hides its cursor. Right Alt toggles mouse lock, Right Ctrl hides or shows this bar. Esc lets go.</div>
         </div>
       </div>
       <button class="tb-btn" id="btnFs" aria-label="Fullscreen"></button>
@@ -53,6 +53,7 @@
 
   <div class="hud" id="hud">
     <div class="hudpill" id="hudFps"><span>FPS</span><b id="fpsVal">-</b></div>
+    <div class="hudpill" id="hudLock"><span>Mouse lock</span><b>On</b></div>
     <div class="hudpill" id="hudPing"><span>Ping</span><b id="pingVal">-</b></div>
   </div>
 
@@ -85,6 +86,12 @@
   </main>
   <div class="toasts" id="toasts"></div>
 </div>
+<nav class="wside" id="wside" hidden>
+  <button class="wnav on" data-w="control" aria-label="Control"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+  <button class="wnav" data-w="claude" id="wnClaude" aria-label="Claude" hidden><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></button>
+  <button class="wnav" data-w="exec" id="wnExec" aria-label="Executor" hidden><svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg></button>
+</nav>
+<div class="web-exec web-page" id="webClaude" data-local-keys><div id="webClRoot"></div></div>
 <div class="web-exec" id="webExec">
     <section class="screen exec" id="executor" data-local-keys>
       <div class="exec-wrap">

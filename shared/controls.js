@@ -57,18 +57,27 @@ const fx = (() => {
   // ---- dropdown ---------------------------------------------------------
   const closeAll = (except) => document.querySelectorAll('.fx-select.open').forEach((s) => s !== except && s.classList.remove('open'));
   document.addEventListener('click', () => closeAll());
-  document.addEventListener('scroll', () => closeAll(), true);
+  // scrolling inside an open menu must not close it (a long model list scrolls); scrolling the page under it re-pins the menu
+  document.addEventListener('scroll', (e) => {
+    const open = [...document.querySelectorAll('.fx-select.open')];
+    if (!open.length) return;
+    if (e.target instanceof Node && open.some((s) => s.contains(e.target))) return;
+    open.forEach((s) => s._place && s._place());
+  }, true);
   document.addEventListener('keydown', (e) => e.key === 'Escape' && closeAll());
 
   function select(root, onchange) {
     const opts = JSON.parse(root.dataset.options);
     let val = root.dataset.value;
-    root.innerHTML = `<button class="cur"><span></span>${chev}</button><div class="menu"></div>`;
-    const label = root.querySelector('.cur span'), menu = root.querySelector('.menu');
+    const long = opts.length > 8;   // long lists (models) get a search box
+    root.innerHTML = `<button class="cur"><span></span>${chev}</button><div class="menu">${long ? '<div class="fx-field sel-search"><input class="fx-input" type="text" placeholder="Search" spellcheck="false" autocomplete="off"></div>' : ''}<div class="opts"></div></div>`;
+    const label = root.querySelector('.cur span'), menu = root.querySelector('.menu'), list = menu.querySelector('.opts'), q = menu.querySelector('input');
     const render = () => {
-      label.textContent = opts.find((o) => o[0] === val)[1];
-      menu.innerHTML = opts.map((o) => `<div class="opt ${o[0] === val ? 'sel' : ''}" data-v="${o[0]}">${o[1]}</div>`).join('');
+      label.textContent = (opts.find((o) => o[0] === val) || opts[0])[1];
+      const f = q ? q.value.trim().toLowerCase() : '';
+      list.innerHTML = opts.filter((o) => !f || String(o[1]).toLowerCase().includes(f)).map((o) => `<div class="opt ${o[0] === val ? 'sel' : ''}" data-v="${o[0]}">${o[1]}</div>`).join('') || '<div class="opt none">No matches</div>';
     };
+    if (q) { q.onclick = (e) => e.stopPropagation(); q.oninput = render; }
     // the menu is position:fixed so scroll containers never clip it
     const place = () => {
       const r = root.querySelector('.cur').getBoundingClientRect();
@@ -79,9 +88,10 @@ const fx = (() => {
       menu.style.bottom = up ? innerHeight - r.top + 8 + 'px' : 'auto';
       menu.style.transformOrigin = up ? 'bottom' : 'top';
     };
-    root.querySelector('.cur').onclick = (e) => { e.stopPropagation(); closeAll(root); place(); root.classList.toggle('open'); };
+    root.querySelector('.cur').onclick = (e) => { e.stopPropagation(); closeAll(root); place(); root.classList.toggle('open'); if (q && root.classList.contains('open')) { q.value = ''; render(); setTimeout(() => q.focus(), 50); } };
+    root._place = place;   // the scroll handler re-pins the fixed menu when the page under it scrolls
     menu.onclick = (e) => {
-      const o = e.target.closest('.opt'); if (!o) return;
+      const o = e.target.closest('.opt'); if (!o || o.classList.contains('none')) return;
       val = o.dataset.v; render(); root.classList.remove('open'); onchange && onchange(val);
     };
     render();
@@ -196,10 +206,11 @@ const fx = (() => {
       bar.classList.remove('settled');
       bar.classList.add('collapsed');
     };
-    bar.addEventListener('mouseenter', open);
-    bar.addEventListener('mouseleave', () => { clearTimeout(t); t = setTimeout(close, 1200); });
-    circleBtn.addEventListener('click', open);
-    return { open, close, peek: (ms = 3000) => { open(); t = setTimeout(close, ms); } };
+    // no circle: the bar stays open; Right Ctrl (flux:topbar from the viewer) hides and shows it
+    circleBtn.hidden = true;
+    document.addEventListener('flux:topbar', () => (bar.classList.contains('collapsed') ? open() : close()));
+    open();
+    return { open, close, peek: () => {} };
   }
 
   return { el, icons, scroll, select, toggle, slider, cards, field, toast, ask, popover, pill };

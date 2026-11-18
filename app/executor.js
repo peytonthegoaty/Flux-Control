@@ -309,7 +309,7 @@ const Executor = typeof document === 'undefined' ? null : (() => {
     if (fit) winApi.fit({ w: on ? 1760 : 1340, h: 840 });
     if (!on) return;
     if (!ai) ai = ClaudeChat($('#exAi'), {
-      compact: true, mcp: true, defaultDir: async () => ws, onClose: () => setAi(false),
+      compact: true, mcp: true, customAi: true, defaultDir: async () => ws, onClose: () => setAi(false),
       onCode: (code) => {   // Claude wrote a script: it goes into the current tab (Ctrl+Z brings the old text back)
         const t = cur(); if (!t || !editor) return;
         editor.setModel(t.model);

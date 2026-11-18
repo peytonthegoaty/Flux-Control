@@ -9,14 +9,14 @@ const winApi = {
   scriptsList: call('scripts:list'), scriptsRead: call('scripts:read'), scriptsWrite: call('scripts:write'), scriptsDelete: call('scripts:delete'),
   bridgeLoader: call('bridge:loader'), bridgeState: async () => (Viewer.active() ? Viewer.call('bridge:state').catch(() => ({ connected: false })) : { connected: false }), bridgeSend: call('bridge:send'),
   claudeChats: call('claude:chats'), claudeHistory: call('claude:history'), claudeSend: call('claude:send'), claudeStop: call('claude:stop'),
-  claudeAuth: call('claude:auth'), claudeHome: call('claude:home'), claudeUsage: call('claude:usage'), claudePickDir: async () => null,
-  aiList: call('ai:list'), aiAdd: call('ai:add'), aiRemove: call('ai:remove'),
+  claudeAuth: call('claude:auth'), claudeHome: call('claude:home'), claudeUsage: call('claude:usage'), claudePlugins: call('claude:plugins'), fsDirs: call('fs:dirs'), claudePickDir: async () => null,
+  aiList: call('ai:list'), aiAdd: call('ai:add'), aiRemove: call('ai:remove'), aiOpenCodeConfig: call('ai:opencode-config'), aiOpenCodeSet: call('ai:opencode-set'), aiOpenCodeRestart: call('ai:opencode-restart'),
   appsList: call('apps:list'), appsClose: call('apps:close'), appsFront: call('apps:front'), appsElev: call('apps:elev'), appsElevState: call('apps:elev-state'),
   onAppsElev: (f) => Viewer.on('apps:elev', f),
   onClaude: (f) => Viewer.on('claude:line', f), onClaudeChanged: (f) => Viewer.on('claude:changed', f), onClaudeUsage: (f) => Viewer.on('claude:usage', f),
 };
 function showExec(on) {
-  $('#webExec').classList.toggle('open', on); $('#executor').classList.toggle('active', on); $('#btnExec').classList.toggle('on', on);
+  $('#webExec').classList.toggle('open', on); $('#executor').classList.toggle('active', on); 
   if (on) Executor.open();
 }
 const app = $('#app');
@@ -122,7 +122,7 @@ btn.onclick = async () => {
     await Viewer.open({
       url: location.origin, password: pw.value, stage, video: $('#remote'),
       onCursor: (n) => {                                            // only the cursor SHAPE follows the host; the pointer is yours
-        const c = Viewer.shape(n); stage.style.cursor = c;
+        const c = Viewer.shape(n); stage.style.cursor = c === 'none' ? 'default' : c;   // the pointer only disappears in mouse lock (pointer lock hides it)
         if (c === 'none' && !hinted && !Viewer.locked()) { hinted = true; fx.toast(Hud.auto() ? 'This game hides its cursor. Click the screen to capture the mouse.' : 'This game hides its cursor. Turn on Mouse lock in the gear menu.'); }
       },
       onLock: Hud.setLock,
@@ -132,7 +132,11 @@ btn.onclick = async () => {
       onClose: () => { fx.toast('Connection lost'); endSession(true); },
     });
     $('#hostName').textContent = location.host;
-    Viewer.call('app:features').then((f) => { $('#btnExec').hidden = !(f || []).includes('roblox-executor'); }).catch(() => {});
+    Viewer.call('app:features').then((f) => {   // the same dev codes as on that PC decide what the sidebar shows
+      f = f || [];
+      $('#wnExec').hidden = !f.includes('roblox-executor'); $('#wnClaude').hidden = !f.includes('claude');
+      $('#wside').hidden = $('#wnExec').hidden && $('#wnClaude').hidden;
+    }).catch(() => {});
     Viewer.call('apps:elev-state').then((on) => { $('#elevBar').hidden = !on; }).catch(() => {});
     $('#mhName').textContent = location.host;
     $('#viaChip').textContent = 'Web';
@@ -145,7 +149,7 @@ btn.onclick = async () => {
 
 function endSession(already) {
   if (!already) Viewer.close();
-  hinted = false; Hud.setLock(false); showExec(false); $('#btnExec').hidden = true; Hud.setScreen({ mons: [] });
+  hinted = false; Hud.setLock(false); wgo('control'); $('#wside').hidden = true; Hud.setScreen({ mons: [] });
   $('#winWrap').hidden = true; $('#winWrap').classList.remove('open'); $('#elevBar').hidden = true;
   stage.classList.remove('live'); stage.style.cursor = '';
   if (document.fullscreenElement) document.exitFullscreen();
@@ -155,4 +159,15 @@ function endSession(already) {
 
 show('login');
 
-$('#btnExec').onclick = () => showExec(!$('#webExec').classList.contains('open'));
+let webClaude = null;
+function wgo(w) {
+  document.querySelectorAll('.wnav').forEach((b) => b.classList.toggle('on', b.dataset.w === w));
+  showExec(w === 'exec');
+  $('#webClaude').classList.toggle('open', w === 'claude');
+  if (w === 'claude') { if (!webClaude) webClaude = ClaudeChat($('#webClRoot')); webClaude.open(); }
+}
+document.querySelectorAll('.wnav').forEach((b) => (b.onclick = () => wgo(b.dataset.w)));
+// Right Ctrl hides and shows the top bar; the sidebar follows it
+document.addEventListener('flux:topbar', () => $('#wside').classList.toggle('gone', $('#top').classList.contains('collapsed')));
+// Right Ctrl hides and shows the top bar; the sidebar follows it
+document.addEventListener('flux:topbar', () => $('#wside').classList.toggle('gone', $('#top').classList.contains('collapsed')));

@@ -53,6 +53,12 @@ function head(p, mtime) {
 }
 
 /** Saved chats, newest first: { id, title, cwd, ts } */
+// chats started in Flux Control (the lists show only these, never the PC's other Claude Code chats): id -> 'claude' | 'exec'
+const ownFile = () => path.join(process.env.FLUX_HOME || path.join(process.env.LOCALAPPDATA || os.homedir(), 'FluxControl'), 'flux-chats.json');
+let own = {}; try { own = JSON.parse(fs.readFileSync(ownFile(), 'utf8')) || {}; } catch {}
+try { for (const id of JSON.parse(fs.readFileSync(ownFile().replace('flux-chats', 'exec-chats'), 'utf8'))) own[id] = 'exec'; } catch {}   // from 0.15.4
+const markOwn = (id, kind) => { if (!id || own[id] === kind) return; own[id] = kind; try { fs.writeFileSync(ownFile(), JSON.stringify(own)); } catch {} };
+
 function chats() {
   const found = [];
   for (const d of safeDir(projects())) for (const f of safeDir(path.join(projects(), d))) {
@@ -61,7 +67,7 @@ function chats() {
     try { found.push({ p, id: f.slice(0, -6), m: fs.statSync(p).mtimeMs }); files.set(f.slice(0, -6), p); } catch {}
   }
   found.sort((a, b) => b.m - a.m);
-  const claude = found.slice(0, 200).map((x) => { const h = head(x.p, x.m); return h.title ? { id: x.id, title: h.title, cwd: h.cwd, ts: x.m } : null; }).filter(Boolean);
+  const claude = found.filter((x) => own[x.id]).slice(0, 200).map((x) => { const h = head(x.p, x.m); return h.title ? { id: x.id, title: h.title, cwd: h.cwd, ts: x.m, own: own[x.id] } : null; }).filter((c) => c && c.own);
   // the custom AIs' chats join the list; their "folder" is the AI's name
   const custom = [...aiChats.values()].filter((c) => c.title).sort((a, b) => b.ts - a.ts)
     .map((c) => ({ id: c.id, title: c.title, cwd: aiName(c.provider, c.name), ts: c.ts, custom: true, ai: c.provider, model: c.model }));
@@ -98,7 +104,7 @@ function rowsOf(p) {
 /** The readable part of a saved chat (last 80 turns): text and the tools that ran. */
 function history(id) {
   const p = sessionFile(id);
-  if (!p && String(id).startsWith('ai-')) {   // a custom AI's chat: same shape, built from what it kept
+  if (!p && (String(id).startsWith('ai-') || aiChats.has(id))) {   // a custom AI's chat (or OpenCode in API mode): same shape, built from what it kept
     const items = [];
     for (const m of (aiChats.get(id) || {}).msgs || []) {
       if (m.role === 'user') items.push({ role: 'user', text: String(m.content || '').slice(0, 20000) });
@@ -170,7 +176,7 @@ async function start(sender, d) {
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', mode, resume ? '--resume' : '--session-id', sid];
   // a chat that is still open in another Claude Code window continues as a copy, so the two never fight over one file
   const p = resume && sessionFile(sid);
-  const live = !!p && Date.now() - fs.statSync(p).mtimeMs < 90000;
+  const live = !!p && !own[sid] && Date.now() - fs.statSync(p).mtimeMs < 90000;   // our own chats (just written by us, e.g. after a model switch) never fork
   if (live) args.push('--fork-session');
   if (d.model) { if (!/^[\w.[\]-]{1,60}$/.test(d.model)) return { error: 'Unknown model' }; args.push('--model', d.model); }
   if (d.effort) { if (!EFFORTS.includes(d.effort)) return { error: 'Unknown effort' }; args.push('--effort', d.effort); }
@@ -178,15 +184,19 @@ async function start(sender, d) {
     let url; try { url = await mcp.ensure(); } catch (e) { return { error: 'Could not start the game tools: ' + e.message }; }
     const cfg = path.join(os.tmpdir(), `flux-mcp-${process.pid}.json`);
     fs.writeFileSync(cfg, JSON.stringify({ mcpServers: { 'flux-executor': { type: 'http', url } } }));
-    args.push('--mcp-config', cfg, '--allowedTools', 'mcp__flux-executor', '--append-system-prompt', AI_PROMPT);
+    // only the game tools: the PC's other MCP servers would add hundreds of tool definitions (tokens) to every chat
+    args.push('--strict-mcp-config', '--mcp-config', cfg, '--allowedTools', 'mcp__flux-executor', '--append-system-prompt', AI_PROMPT);
   }
 
   let child;
   const t0 = Date.now();
   log('start', exe(), 'cwd=' + cwd, args.filter((a) => a !== AI_PROMPT).join(' '));
-  try { child = spawn(exe(), args, { cwd, env: env(), windowsHide: true }); } catch (e) { log('spawn failed', e.message); return { error: 'Could not start Claude Code: ' + e.message }; }
+  const runEnv = env();
+  if (['off', 'lite', 'full', 'ultra'].includes(d.ponytail)) runEnv.PONYTAIL_DEFAULT_MODE = d.ponytail;   // the ponytail plugin's level for this message (its SessionStart hook reads it)
+  try { child = spawn(exe(), args, { cwd, env: runEnv, windowsHide: true }); } catch (e) { log('spawn failed', e.message); return { error: 'Could not start Claude Code: ' + e.message }; }
   const key = crypto.randomUUID();
   runs.set(key, { sid, child });
+  markOwn(sid, d.mcp ? 'exec' : 'claude');
   let firstOut = true;
   const send = (o) => { if (!sender.isDestroyed()) sender.send('claude:line', key, o); };
   child.on('error', (e) => { log('error', e.code || '', e.message); send({ type: 'stderr', text: e.code === 'ENOENT' ? 'Claude Code is not installed on this PC.' : e.message }); });
@@ -194,6 +204,7 @@ async function start(sender, d) {
     if (firstOut) { firstOut = false; log('first output after', Date.now() - t0, 'ms'); }
     let o; try { o = JSON.parse(l); } catch { return send({ type: 'stderr', text: l }); }
     if (o.type === 'rate_limit_event') setUsage(o.rate_limit_info);
+    if (o.session_id) markOwn(o.session_id, d.mcp ? 'exec' : 'claude');   // a chat continued as a copy gets a new id
     send(o);
   });
   readline.createInterface({ input: child.stderr }).on('line', (l) => { log('stderr', l); send({ type: 'stderr', text: l }); });
@@ -246,7 +257,166 @@ async function aiAdd({ base, key, name }) {
   list.push(p); writeAi(list);
   return { id: p.id, name: p.name, models };
 }
-const aiList = () => readAi().map(({ id, name, base, models }) => ({ id, name, base, models }));
+// OpenCode: "personal" runs through the local OpenCode CLI; "api" talks to an OpenAI-compatible endpoint (e.g. `opencode serve`)
+const ocExe = () => { const p = path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'opencode-ai', 'bin', 'opencode.exe'); return fs.existsSync(p) ? p : null; };
+const ocCfgFile = () => path.join(home(), 'opencode.json');
+const readOcCfg = () => { try { const c = JSON.parse(fs.readFileSync(ocCfgFile(), 'utf8')); return { mode: c.mode === 'api' ? 'api' : 'cli', base: cleanBase(c.base) || 'http://127.0.0.1:4096/v1', key: c.key || '' }; } catch { return { mode: 'cli', base: 'http://127.0.0.1:4096/v1', key: '' }; } };
+const writeOcCfg = (c) => { fs.mkdirSync(home(), { recursive: true }); fs.writeFileSync(ocCfgFile(), JSON.stringify(c)); };
+let ocFree = null, ocApiModels = null, ocApiBase = '';
+const ocModels = () => {
+  const cfg = readOcCfg();
+  if (cfg.mode === 'api') {
+    if (ocApiModels && ocApiBase === cfg.base) return Promise.resolve(ocApiModels);
+    return (async () => {
+      try {
+        const r = await fetch(cfg.base + '/models', { headers: cfg.key ? { Authorization: 'Bearer ' + unseal(cfg.key) } : {} });
+        const j = await r.json();
+        const m = (Array.isArray(j.data) ? j.data : Array.isArray(j.models) ? j.models : Array.isArray(j) ? j : []).map((x) => (typeof x === 'string' ? x : x.id || x.name)).filter(Boolean).slice(0, 300);
+        if (m.length) { ocApiModels = m; ocApiBase = cfg.base; }
+        return m;
+      } catch { return ocApiModels && ocApiBase === cfg.base ? ocApiModels : []; }
+    })();
+  }
+  return (ocFree || !ocExe() ? Promise.resolve(ocFree || []) : new Promise((ok) => execFile(ocExe(), ['models'], { windowsHide: true, timeout: 60000 }, (_e, out) => {
+    const m = String(out || '').split(/\r?\n/).map((s) => s.trim()).filter((s) => /^[\w.-]+\/[\w.:\/@-]+$/.test(s));   // every model OpenCode has, all its providers (provider/model)
+    if (m.length) ocFree = m;
+    ok(m);
+  })));
+};
+const aiList = async () => {
+  const list = readAi().map(({ id, name, base, models }) => ({ id, name, base, models }));
+  const oc = await ocModels();
+  const cfg = readOcCfg();
+  const show = oc.length || ocExe() || cfg.mode === 'api';   // show the entry so its mode can be configured/restarted
+  return show ? [{ id: 'opencode', name: 'OpenCode', base: cfg.mode === 'api' ? cfg.base : '', models: oc, builtIn: true, mode: cfg.mode }, ...list] : list;
+};
+const ocSessions = new Map();   // our chat id -> OpenCode session id (CLI mode, only while the app runs)
+function startOpenCode(sender, d, text) {
+  const cfg = readOcCfg();
+  if (cfg.mode === 'api') return startOpenCodeApi(sender, d, text, cfg);
+  const exe = ocExe(); if (!exe) return { error: 'OpenCode is not installed on this PC' };
+  const model = String(d.model || '');
+  if (!/^[\w.-]+\/[\w.:\/@-]{1,120}$/.test(model)) return { error: 'Unknown model' };
+  if (text.length > 30000) return { error: 'That message is too long for OpenCode (30,000 characters at most)' };
+  const id = d.id && ocSessions.has(d.id) ? d.id : 'oc-' + crypto.randomUUID();
+  if (!ocSessions.has(id)) ocSessions.set(id, '');
+  let cwd = String(d.cwd || '').trim(); if (!cwd || !fs.existsSync(cwd)) cwd = os.homedir();
+  const args = ['run', '-m', model, '--format', 'json'];
+  if (ocSessions.get(id)) args.push('-s', ocSessions.get(id));
+  args.push(text);   // spawn passes it as one argument, never through a shell
+  let child; try { child = spawn(exe, args, { cwd, windowsHide: true }); } catch (e) { return { error: 'Could not start OpenCode: ' + e.message }; }
+  const key = crypto.randomUUID(), t0 = Date.now();
+  runs.set(key, { sid: id, child });
+  const send = (o) => { if (!sender.isDestroyed()) sender.send('claude:line', key, o); };
+  const errs = [];
+  readline.createInterface({ input: child.stdout }).on('line', (l) => {
+    let o; try { o = JSON.parse(l); } catch { return; }
+    if (o.sessionID) ocSessions.set(id, o.sessionID);
+    const p = o.part || {};
+    if (o.type === 'text' && p.text) send({ type: 'assistant', message: { content: [{ type: 'text', text: p.text }] } });
+    else if (p.type === 'tool' || o.type === 'tool_use') {
+      const st = p.state || {};
+      send({ type: 'assistant', message: { content: [{ type: 'tool_use', id: p.callID || p.id, name: p.tool || 'tool', input: st.input || {} }] } });
+      if (st.output != null || st.error) send({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: p.callID || p.id, content: String(st.output || st.error || ''), is_error: !!st.error }] } });
+    }
+  });
+  readline.createInterface({ input: child.stderr }).on('line', (l) => errs.push(l));
+  child.on('error', (e) => errs.push(e.message));
+  child.on('close', (code) => {
+    runs.delete(key);
+    send(code === 0 ? { type: 'result', subtype: 'success', duration_ms: Date.now() - t0 } : { type: 'result', subtype: 'error', is_error: true, result: errs.slice(-3).join('\n') || 'OpenCode stopped (' + code + ')' });
+    send({ type: 'exit', code });
+  });
+  return { run: key, id };
+}
+function startOpenCodeApi(sender, d, text, cfg) {
+  const base = cleanBase(cfg.base);
+  if (!/^https?:\/\/[^\s]+$/i.test(base)) return { error: 'Set the OpenCode API base URL first (in + AI → OpenCode).' };
+  const id = d.id && aiChats.has(d.id) ? d.id : 'oc-' + crypto.randomUUID();
+  const chat = aiChats.get(id) || { id, provider: 'opencode', name: 'OpenCode', model: '', title: '', ts: 0, msgs: [{ role: 'system', content: d.mcp ? AI_PROMPT.replace('MCP tools', 'tools') : 'You are a helpful assistant.' }] };
+  chat.provider = 'opencode'; chat.name = 'OpenCode'; if (d.model) chat.model = String(d.model).slice(0, 120);
+  if (!chat.title) chat.title = text.slice(0, 70);
+  chat.ts = Date.now();
+  aiChats.set(id, chat);
+  const msgs = chat.msgs;
+  msgs.push({ role: 'user', content: text.slice(0, 40000) });
+  saveAiChats(); broadcast('claude:changed', [id]);
+  const key = crypto.randomUUID(), ac = new AbortController();
+  runs.set(key, { sid: id, child: { kill: () => ac.abort() } });
+  const send = (o) => { if (!sender.isDestroyed()) sender.send('claude:line', key, o); };
+  const tools = d.mcp ? mcp.TOOLS.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.inputSchema } })) : undefined;
+  const t0 = Date.now(), apiKey = cfg.key ? unseal(cfg.key) : '';
+  (async () => {
+    try {
+      for (let round = 0; round < 12; round++) {
+        const r = await fetch(base + '/chat/completions', {
+          method: 'POST', signal: ac.signal,
+          headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}) },
+          body: JSON.stringify({ model: d.model, messages: msgs, stream: true, ...(tools ? { tools } : {}) }),
+        });
+        if (!r.ok) throw new Error(`The API answered ${r.status}: ${(await r.text()).slice(0, 300)}`);
+        let textOut = '', started = false, calls = [], buf = '';
+        const dec = new TextDecoder();
+        for await (const chunk of r.body) {
+          buf += dec.decode(chunk, { stream: true });
+          let i;
+          while ((i = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+            if (!line.startsWith('data:')) continue;
+            const data = line.slice(5).trim(); if (data === '[DONE]') continue;
+            let j; try { j = JSON.parse(data); } catch { continue; }
+            const dl = (j.choices && j.choices[0] && j.choices[0].delta) || {};
+            if (dl.content) {
+              if (!started) { started = true; send({ type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'text' } } }); }
+              textOut += dl.content;
+              send({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: dl.content } } });
+            }
+            for (const tc of dl.tool_calls || []) {
+              const c = calls[tc.index || 0] || (calls[tc.index || 0] = { id: tc.id || 'call' + round + (tc.index || 0), name: '', args: '' });
+              if (tc.id) c.id = tc.id;
+              if (tc.function && tc.function.name) c.name += tc.function.name;
+              if (tc.function && tc.function.arguments) c.args += tc.function.arguments;
+            }
+          }
+        }
+        calls = calls.filter(Boolean);
+        if (textOut) send({ type: 'assistant', message: { content: [{ type: 'text', text: textOut }] } });
+        msgs.push({ role: 'assistant', content: textOut || null, ...(calls.length ? { tool_calls: calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.args || '{}' } })) } : {}) });
+        if (!calls.length) { saveAiChats(); broadcast('claude:changed', [id]); break; }
+        for (const c of calls) {
+          let args = {}; try { args = JSON.parse(c.args || '{}'); } catch {}
+          send({ type: 'assistant', message: { content: [{ type: 'tool_use', id: c.id, name: c.name, input: args }] } });
+          let out, isErr = false;
+          const t = mcp.TOOLS.find((x) => x.name === c.name);
+          try { const res = t ? await t.run(args) : { content: [{ type: 'text', text: 'Unknown tool' }], isError: true }; out = res.content.map((x) => x.text || '[image]').join('\n'); isErr = !!res.isError; }
+          catch (e) { out = e.message; isErr = true; }
+          send({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: c.id, content: out, is_error: isErr }] } });
+          msgs.push({ role: 'tool', tool_call_id: c.id, content: String(out).slice(0, 40000) });
+        }
+        saveAiChats(); broadcast('claude:changed', [id]);
+      }
+      send({ type: 'result', subtype: 'success', duration_ms: Date.now() - t0 });
+    } catch (e) {
+      send({ type: 'result', subtype: 'error', is_error: true, result: ac.signal.aborted ? 'Stopped' : e.message });
+    } finally { runs.delete(key); send({ type: 'exit' }); }
+  })();
+  return { run: key, id };
+}
+function ocRestart() {
+  for (const [k, r] of runs) if (String(r.sid).startsWith('oc-')) { try { r.child.kill(); } catch {} runs.delete(k); }
+  ocSessions.clear();
+  ocFree = null; ocApiModels = null; ocApiBase = '';
+  return { ok: true };
+}
+function ocSetMode(d) {
+  const cfg = readOcCfg();
+  const mode = d && d.mode === 'api' ? 'api' : 'cli';
+  const base = cleanBase((d && d.base) || cfg.base || 'http://127.0.0.1:4096/v1') || 'http://127.0.0.1:4096/v1';
+  const key = d && typeof d.key === 'string' ? (d.key ? seal(d.key) : '') : cfg.key;
+  writeOcCfg({ mode, base, key });
+  ocRestart(); // drop stale sessions/cache so the new mode starts clean
+  return { ok: true, mode, base };
+}
 const aiRemove = (id) => { writeAi(readAi().filter((p) => p.id !== id)); return true; };
 
 // custom AI chats live on disk too: they survive a restart and sit in the chat list next to Claude Code's
@@ -267,6 +437,7 @@ function saveAiChats() {   // debounced: a burst of pushes becomes one write
 const aiName = (id, fallback) => (readAi().find((x) => x.id === id) || {}).name || fallback || 'AI';
 
 async function startCustom(sender, d, text) {
+  if (d.provider === 'opencode') return startOpenCode(sender, d, text);
   const p = readAi().find((x) => x.id === d.provider);
   if (!p) return { error: 'That AI was removed' };
   const id = d.id && aiChats.has(d.id) ? d.id : 'ai-' + crypto.randomUUID();
@@ -352,9 +523,25 @@ const H = {
   })),
   'claude:home': () => os.homedir(),
   'claude:usage': () => usage,
+  // the folder picker: folders of this PC (drives when no path is given)
+  'fs:dirs': (_s, dir) => {
+    if (!dir) return { path: '', parent: null, dirs: 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((l) => l + ':\\').filter((d) => fs.existsSync(d)), home: os.homedir() };
+    const p = path.resolve(String(dir));
+    let dirs = [];
+    try { dirs = fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('$')).map((e) => e.name).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })); }
+    catch (e) { return { error: 'That folder cannot be opened', path: p, parent: path.dirname(p) === p ? '' : path.dirname(p), dirs: [] }; }
+    return { path: p, parent: path.dirname(p) === p ? '' : path.dirname(p), dirs, home: os.homedir() };
+  },
+  'claude:plugins': () => {   // which Claude Code plugins the chat offers settings for
+    try { const s = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8')); return { ponytail: !!(s.enabledPlugins || {})['ponytail@ponytail'] }; }
+    catch { return { ponytail: false }; }
+  },
   'ai:list': () => aiList(),
   'ai:add': (_s, d) => aiAdd(d || {}),
   'ai:remove': (_s, id) => aiRemove(id),
+  'ai:opencode-config': () => { const c = readOcCfg(); return { mode: c.mode, base: c.base, hasKey: !!c.key }; },
+  'ai:opencode-set': (_s, d) => ocSetMode(d || {}),
+  'ai:opencode-restart': () => ocRestart(),
 };
 for (const [k, f] of Object.entries(H)) ipcMain.handle(k, (e, ...a) => f(e.sender, ...a));
 ipcMain.handle('claude:pickDir', async (e) => {

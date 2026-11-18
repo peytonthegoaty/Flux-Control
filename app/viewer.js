@@ -122,6 +122,7 @@ const Viewer = (() => {
     const key = (down) => (e) => {
       if (document.querySelector('.fx-modal.open') || (e.target.closest && e.target.closest('[data-local-keys]'))) return;   // typing into our own dialog or the Executor
       e.preventDefault();
+      if (e.code === 'ControlRight') { if (down && !e.repeat) document.dispatchEvent(new Event('flux:topbar')); return; }   // Right Ctrl: top bar on/off, never sent to the PC
       if (e.code === 'AltRight') { if (down && !e.repeat) { autoLocked = false; lockNow(!locked); } return; }   // Right Alt: mouse lock on/off, never sent to the PC
       down ? held.add(e.code) : held.delete(e.code);
       send({ t: down ? 'kd' : 'ku', c: e.code });

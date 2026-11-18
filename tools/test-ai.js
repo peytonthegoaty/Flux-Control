@@ -46,7 +46,7 @@ const srv = http.createServer((req, res) => {
   // adding: the models are fetched from the API, the same base keeps its id when re-added
   const added = await claudeMain.aiAdd({ base, key: 'sk-test', name: 'TestAI' });
   assert.strictEqual(added.models.length, 2, 'models listed');
-  assert.deepStrictEqual(await claudeMain.aiList(), [{ id: added.id, name: 'TestAI', base, models: ['test-model', 'test-model-2'] }]);
+  assert.deepStrictEqual((await claudeMain.aiList()).filter((p) => !p.builtIn), [{ id: added.id, name: 'TestAI', base, models: ['test-model', 'test-model-2'] }]);
   const again = await claudeMain.aiAdd({ base, key: 'sk-test' });
   assert.strictEqual(again.id, added.id, 're-adding keeps the id');
 
@@ -94,7 +94,7 @@ const srv = http.createServer((req, res) => {
 
   // removing the AI: its list entry goes away, its chats stay readable
   assert(claudeMain.aiRemove(added.id));
-  assert.strictEqual(claudeMain.aiList().length, 0);
+  assert.strictEqual((await claudeMain.aiList()).filter((p) => !p.builtIn).length, 0);
   assert(claudeMain.chats().some((c) => c.id === first.id), 'chat survives the removal');
   assert.strictEqual(claudeMain.history(first.id).length, 4);
 

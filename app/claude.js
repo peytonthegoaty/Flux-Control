@@ -4,7 +4,7 @@
 function claudeMd(src) {
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const blocks = [];
-  src = String(src).replace(/```([\w+-]*)[^\n]*\n?([\s\S]*?)(```|$)/g, (m, l, c) => { blocks.push(`<pre data-l="${esc(l)}"><button class="cl-cp">Copy</button><code>${esc(c.replace(/\n$/, ''))}</code></pre>`); return '\n\u0000' + (blocks.length - 1) + '\u0000\n'; });
+  src = String(src).replace(/```([\w+-]*)[^\n]*\n?([\s\S]*?)(```|$)/g, (m, l, c) => { blocks.push(`<pre data-l="${esc(l)}"><button class="cl-ins">Insert into tab</button><button class="cl-cp">Copy</button><code>${esc(c.replace(/\n$/, ''))}</code></pre>`); return '\n\u0000' + (blocks.length - 1) + '\u0000\n'; });
   const inl = (t) => {
     const codes = [];
     t = esc(t).replace(/`([^`\n]+)`/g, (m, c) => { codes.push(c); return '\u0001' + (codes.length - 1) + '\u0001'; });
@@ -45,7 +45,7 @@ if (typeof module !== 'undefined') module.exports = { claudeMd };
  *   hero     (el) => fills the new-chat screen
  *   defaultDir  async () => folder a new chat starts in (default: the user folder)
  */
-function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDir = null, onClose = null, onCode = null } = {}) {
+function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDir = null, onClose = null, onCode = null, customAi = false } = {}) {
   const $ = (s, r = root) => r.querySelector(s);
   const ICON = {
     folder: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
@@ -60,6 +60,7 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
   const opt = (o) => JSON.stringify(o);
   root.classList.add('cl-wrap');
   root.classList.toggle('compact', compact);
+  root.classList.toggle('can-insert', !!onCode);
   root.innerHTML = `
     <aside class="cl-side">
       <div class="cl-sidehead"><b>Chats</b><button class="cl-new">${ICON.plus}New chat</button></div>
@@ -81,8 +82,9 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
         <div class="cl-box">
           <div class="cl-input empty" contenteditable="plaintext-only" spellcheck="false" data-ph="${mcp ? 'Ask Claude to do something in your game' : 'Message Claude'}"></div>
           <div class="cl-row">
-            <div class="fx-select cl-pill cl-model" data-value="" data-options='${opt([['', 'Default model'], ['claude-fable-5-2', 'Fable 5.2'], ['claude-opus-5-5', 'Opus 5.5'], ['claude-sonnet-5-5', 'Sonnet 5.5'], ['claude-haiku-5-5', 'Haiku 5.5']])}'></div>
+            <div class="fx-select cl-pill cl-model" data-value="" data-options='${opt([['', 'Default model'], ['claude-fable-5-2', 'Fable 5.2'], ['claude-fable-5-1', 'Fable 5.1'], ['claude-fable-5', 'Fable 5'], ['claude-opus-5-5', 'Opus 5.5'], ['claude-opus-5', 'Opus 5'], ['claude-opus-4-8', 'Opus 4.8'], ['claude-opus-4-7', 'Opus 4.7'], ['claude-opus-4-6', 'Opus 4.6'], ['claude-opus-4-5', 'Opus 4.5'], ['claude-sonnet-5-5', 'Sonnet 5.5'], ['claude-sonnet-5', 'Sonnet 5'], ['claude-sonnet-4-6', 'Sonnet 4.6'], ['claude-sonnet-4-5', 'Sonnet 4.5'], ['claude-haiku-5-5', 'Haiku 5.5'], ['claude-haiku-4-5', 'Haiku 4.5']])}'></div>
             <div class="fx-select cl-pill cl-effort" data-value="" data-options='${opt([['', 'Default effort'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort'], ['xhigh', 'Extra high effort'], ['max', 'Max effort']])}'></div>
+            <div class="fx-select cl-pill cl-pony" data-value="" data-options='${opt([['', 'Ponytail: default'], ['off', 'Ponytail off'], ['lite', 'Ponytail lite'], ['full', 'Ponytail full'], ['ultra', 'Ponytail ultra']])}' hidden></div>
             <div class="fx-select cl-pill cl-mode" data-value="manual" data-options='${opt([['manual', 'Ask'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['bypassPermissions', 'Bypass permissions']])}'></div>
             <div class="chipwrap cl-aiwrap"><button class="cl-addai" aria-label="Add or remove an AI">+ AI</button><div class="tb-menu cl-aimenu"></div></div>
             <span class="grow"></span>
@@ -137,7 +139,8 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
     if (!groups.size) list.innerHTML = `<div class="cl-empty">${q ? 'No chats match.' : 'No Claude Code chats were found on this PC yet.'}</div>`;
   }
   async function loadChats(quiet) {
-    cl.chats = await winApi.claudeChats().catch(() => cl.chats);
+    // the Claude page lists Claude Code chats; the Executor's AI mode only the chats started there (and its custom AI chats)
+    cl.chats = (await winApi.claudeChats().catch(() => cl.chats)).filter((c) => (mcp ? c.own === 'exec' || c.custom : c.own === 'claude'));
     const sig = cl.chats.map((c) => c.id + c.title + c.cwd + Math.floor(c.ts / 60000)).join('|') + cl.id + cl.busy;
     if (quiet && sig === cl.sig) return;   // nothing visible changed
     cl.sig = sig; drawList(quiet);
@@ -154,7 +157,7 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
     msgs().innerHTML = '';
     const h = fx.el('div', 'cl-hero', `<div class="cl-mark">${ICON.spark}</div><h2>${mcp ? 'AI mode' : 'What can I help with?'}</h2><p>Claude Code works in the folder below, on this PC.</p><button class="cl-dir">${ICON.folder}<span></span><small>Change</small></button><div class="cl-extra"></div>`);
     $('.cl-dir span', h).textContent = cl.cwd || cl.home;
-    $('.cl-dir', h).onclick = async () => { const d = await winApi.claudePickDir(); if (d) { cl.cwd = d; $('.cl-dir span', h).textContent = d; head(); } };
+    $('.cl-dir', h).onclick = async () => { const d = await pickFolder(cl.cwd || cl.home); if (d) { cl.cwd = d; $('.cl-dir span', h).textContent = d; head(); } };
     if (hero) hero($('.cl-extra', h));
     msgs().appendChild(h);
   }
@@ -213,9 +216,14 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
   }
 
   // ---------------------------------------------------------------- a running answer
-  function chip(name, hintText) {
+  function chip(name, hintText, code) {
     const d = fx.el('div', 'cl-tool', `<div class="th">${ICON.tool}<b></b><span></span><i>${ICON.chev}</i></div><div class="tb"><div><pre></pre></div></div>`);
     $('b', d).textContent = name.replace(/^mcp__flux-executor__/, ''); $('span', d).textContent = hintText;
+    if (onCode && code) {   // Lua Claude ran in the game: one click puts it in the Executor's current tab
+      const ins = fx.el('button', 'cl-tins', 'Insert into tab');
+      ins.onclick = (e) => { e.stopPropagation(); onCode(code); };
+      $('.th', d).insertBefore(ins, $('.th i', d));
+    }
     $('.th', d).onclick = () => d.classList.toggle('open');
     msgs().appendChild(d); return d;
   }
@@ -223,7 +231,9 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
   const hintOf = (i) => { i = i || {}; for (const k of ['command', 'file_path', 'path', 'code', 'pattern', 'url', 'description', 'prompt', 'query']) if (typeof i[k] === 'string') return i[k].replace(/\s+/g, ' ').slice(0, 160); return ''; };
   let raf = 0;
   const draw = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; if (cl.cur) { cl.cur.innerHTML = claudeMd(cl.buf) + '<span class="cl-caret"></span>'; scroll(); } }); };
+  let early = {};
   function onEvent(o) {
+    if (o.type === 'assistant' && statLabel === 'Starting') stat('Writing');
     if (o.session_id && cl.busy && o.session_id !== cl.id) { cl.id = o.session_id; head(); }
     if (o.type === 'system') {
       if (o.subtype === 'hook_started' && cl.busy) stat('Running your hooks');
@@ -236,11 +246,11 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
       if (e.type === 'content_block_start' && b.type === 'text') { cl.cur = bubble('a'); cl.buf = ''; stat('Writing'); }
       else if (e.type === 'content_block_start' && b.type === 'thinking') stat('Thinking');
       else if (e.type === 'content_block_start' && b.type === 'tool_use') stat('Using ' + b.name.replace(/^mcp__flux-executor__/, ''));
-      else if (e.type === 'content_block_delta' && e.delta && e.delta.type === 'text_delta') { if (!cl.cur) { cl.cur = bubble('a'); cl.buf = ''; } cl.buf += e.delta.text; draw(); }
+      else if (e.type === 'content_block_delta' && e.delta && e.delta.type === 'text_delta') { if (!cl.cur) { cl.cur = bubble('a'); cl.buf = ''; } if (statLabel === 'Starting') stat('Writing'); cl.buf += e.delta.text; draw(); }
     } else if (o.type === 'assistant') {
       for (const b of (o.message && o.message.content) || []) {
-        if (b.type === 'text') { cl.runText += '\n' + b.text; if (cl.cur) { cl.cur.innerHTML = claudeMd(b.text); cl.cur = null; } else bubble('a').innerHTML = claudeMd(b.text); }
-        else if (b.type === 'tool_use' && !cl.chips[b.id]) cl.chips[b.id] = chip(b.name, hintOf(b.input));
+        if (b.type === 'text') { if (statLabel === 'Starting') stat('Writing'); cl.runText += '\n' + b.text; if (cl.cur) { cl.cur.innerHTML = claudeMd(b.text); cl.cur = null; } else bubble('a').innerHTML = claudeMd(b.text); }
+        else if (b.type === 'tool_use' && !cl.chips[b.id]) { if (statLabel === 'Starting') stat('Using ' + b.name.replace(/^mcp__flux-executor__/, '')); cl.chips[b.id] = chip(b.name, hintOf(b.input), /run_lua$/.test(b.name) && b.input && typeof b.input.code === 'string' ? b.input.code : ''); }
       }
       scroll();
     } else if (o.type === 'user') {
@@ -259,7 +269,7 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
       if (o.is_error || (o.subtype && o.subtype !== 'success')) bubble('e').textContent = String(o.result || o.subtype || 'Something went wrong');
       else note([o.duration_ms ? (o.duration_ms / 1000).toFixed(1) + 's' : '', o.total_cost_usd != null ? '$' + (+o.total_cost_usd).toFixed(3) : ''].filter(Boolean).join(' · '));
       scroll();
-    } else if (o.type === 'stderr' && o.text) note(o.text);
+    } else if (o.type === 'stderr' && o.text) { if (statLabel === 'Starting') stat('Working'); note(o.text); }
     else if (o.type === 'exit') done();
   }
 
@@ -275,46 +285,101 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
     let r;
     const mv = model.get(), custom = mv.startsWith('custom|') ? mv.split('|') : null;
     if (cl.id && cl.id.startsWith('ai-') && !custom) return fx.toast('This chat talks to a custom AI — pick it in the model list');
-    try { r = await winApi.claudeSend({ id: cl.id, cwd: cl.id ? '' : cl.cwd, model: custom ? custom.slice(2).join('|') : mv, provider: custom ? custom[1] : undefined, effort: effort.get(), mode: mode.get(), text, mcp }); }
+    try { r = await winApi.claudeSend({ id: cl.id, cwd: cl.id ? '' : cl.cwd, model: custom ? custom.slice(2).join('|') : mv, provider: custom ? custom[1] : undefined, effort: effort.get(), mode: mode.get(), ponytail: !custom && !$('.cl-pony').hidden ? pony.get() : undefined, text, mcp }); }
     catch (e) { r = { error: 'Could not start Claude Code: ' + (e && e.message ? e.message : e) }; }
     if (!r || r.error) { done(); bubble('e').textContent = (r && r.error) || 'Could not start Claude Code'; return; }
     if (r.forked) note('This chat is still open in another Claude Code window, so it continues here as a copy.');
     if (!cl.id) cl.title = text.slice(0, 70);
     cl.id = r.id; cl.run = r.run; head(); drawList();
+    const got = early[r.run] || []; early = {}; got.forEach(onEvent);
   }
 
   // ---------------------------------------------------------------- composer
   const PREF = 'fluxClaude' + (mcp ? 'Ai' : '');
   const pref = (() => { try { return JSON.parse(localStorage.getItem(PREF)) || {}; } catch { return {}; } })();
-  for (const [s, k] of [['.cl-model', 'model'], ['.cl-effort', 'effort'], ['.cl-mode', 'mode']]) if (pref[k] != null && JSON.parse($(s).dataset.options).some((o) => o[0] === pref[k])) $(s).dataset.value = pref[k];
-  const keep = () => { try { localStorage.setItem(PREF, JSON.stringify({ model: model.get(), effort: effort.get(), mode: mode.get() })); } catch {} };
+  for (const [s, k] of [['.cl-model', 'model'], ['.cl-effort', 'effort'], ['.cl-mode', 'mode'], ['.cl-pony', 'pony']]) if (pref[k] != null && JSON.parse($(s).dataset.options).some((o) => o[0] === pref[k])) $(s).dataset.value = pref[k];
+  // ponytail picker: only when the plugin is installed and a Claude model (not a custom AI) is chosen
+  let pony = null, hasPony = false;
+  const syncPony = () => { if (pony) $('.cl-pony').hidden = !hasPony || model.get().startsWith('custom|'); };
+  const keep = () => { syncPony(); try { localStorage.setItem(PREF, JSON.stringify({ model: model.get(), effort: effort.get(), mode: mode.get(), pony: pony ? pony.get() : '' })); } catch {} };
   let model = fx.select($('.cl-model'), keep);
   const effort = fx.select($('.cl-effort'), keep);
   const BASE_MODELS = JSON.parse($('.cl-model').dataset.options);
   async function loadModels() {
-    const ais = (winApi.aiList && (await winApi.aiList().catch(() => []))) || [];
+    const ais = (customAi && winApi.aiList && (await winApi.aiList().catch(() => []))) || [];
     const opts = BASE_MODELS.concat(...ais.map((p) => p.models.map((m) => ['custom|' + p.id + '|' + m, p.name + ': ' + m])));
     const el = $('.cl-model'), v = model.get();
     el.dataset.options = JSON.stringify(opts);
     el.dataset.value = opts.some((o) => o[0] === v) ? v : (opts.some((o) => o[0] === pref.model) ? pref.model : '');
-    model = fx.select(el, keep);
+    model = fx.select(el, keep); syncPony();
   }
   // ---- custom AIs: + AI opens a menu to add one, jump to one, or remove one
   const aiwrap = $('.cl-aiwrap'), aimenu = $('.cl-aimenu', aiwrap);
+  if (!customAi) aiwrap.hidden = true;
   fx.popover(aiwrap, $('.cl-addai', aiwrap));
   async function drawAiMenu() {
     const ais = (winApi.aiList && (await winApi.aiList().catch(() => []))) || [];
     aimenu.innerHTML = `<button class="menu-item" data-add>${ICON.plus}<span>Add an AI…</span></button><div class="menu-sep"></div>`;
     for (const p of ais) {
+      if (p.id === 'opencode') {
+        const it = fx.el('div', 'menu-item ai-oc');
+        const mode = p.mode === 'api' ? 'API' : 'Personal';
+        it.innerHTML = `<div class="ai-top"><span class="ai-n"></span><span class="ai-c"></span></div><div class="ai-sub"><span class="ai-mode"></span><span class="grow"></span><button class="ai-act" data-oc="swap">Switch</button><button class="ai-act" data-oc="cfg">API URL</button><button class="ai-act" data-oc="restart">Restart</button></div>`;
+        $('.ai-n', it).textContent = p.name; $('.ai-c', it).textContent = p.models.length;
+        $('.ai-mode', it).textContent = mode + (p.base ? ' · ' + p.base.replace(/^https?:\/\//, '') : '');
+        $('.ai-top', it).onclick = () => {
+          const opts = JSON.parse($('.cl-model').dataset.options), v = opts.find((o) => o[0].startsWith('custom|opencode|'));
+          if (v) { $('.cl-model').dataset.value = v[0]; model = fx.select($('.cl-model'), keep); keep(); }
+          else fx.toast(p.models.length ? 'Pick an OpenCode model from the model list' : 'No OpenCode models found — check mode or restart');
+        };
+        $('[data-oc="cfg"]', it).hidden = p.mode !== 'api';
+        $('[data-oc="swap"]', it).onclick = async (e) => {
+          e.stopPropagation();
+          const cfg = (winApi.aiOpenCodeConfig && await winApi.aiOpenCodeConfig().catch(() => null)) || { mode: p.mode || 'cli', base: p.base || 'http://127.0.0.1:4096/v1', hasKey: false };
+          const toApi = cfg.mode !== 'api';
+          if (toApi) {
+            const base = await fx.ask({ title: 'OpenCode via API', text: 'Use an OpenAI-compatible endpoint (e.g. a local `opencode serve`). Enter its base URL.', ok: 'Use API', cancel: 'Cancel', input: { placeholder: 'http://127.0.0.1:4096/v1', value: cfg.base || 'http://127.0.0.1:4096/v1' } });
+            if (!base) return;
+            const key = await fx.ask({ title: 'API key (optional)', text: 'Leave empty if none. Stored encrypted on this PC.', ok: 'Save', cancel: 'Cancel', input: { placeholder: 'sk-...', value: '' } });
+            if (key == null) return;
+            await winApi.aiOpenCodeSet({ mode: 'api', base, key: key.trim() || undefined });
+            fx.toast('OpenCode set to API mode');
+          } else {
+            await winApi.aiOpenCodeSet({ mode: 'cli' });
+            fx.toast('OpenCode set to personal (CLI) mode');
+          }
+          await loadModels(); drawAiMenu();
+        };
+        $('[data-oc="cfg"]', it).onclick = async (e) => {
+          e.stopPropagation();
+          const cfg = (winApi.aiOpenCodeConfig && await winApi.aiOpenCodeConfig().catch(() => null)) || { base: 'http://127.0.0.1:4096/v1', hasKey: false };
+          const base = await fx.ask({ title: 'OpenCode API URL', text: 'Base URL of the OpenAI-compatible endpoint.', ok: 'Save', cancel: 'Cancel', input: { placeholder: 'http://127.0.0.1:4096/v1', value: cfg.base || 'http://127.0.0.1:4096/v1' } });
+          if (!base) return;
+          const key = await fx.ask({ title: 'API key (optional)', text: cfg.hasKey ? 'Leave empty to keep the current key.' : 'Leave empty if none.', ok: 'Save', cancel: 'Cancel', input: { placeholder: 'sk-...', value: '' } });
+          if (key == null) return;
+          await winApi.aiOpenCodeSet({ mode: 'api', base, key: key.trim() || undefined });
+          fx.toast('OpenCode API updated');
+          await loadModels(); drawAiMenu();
+        };
+        $('[data-oc="restart"]', it).onclick = async (e) => {
+          e.stopPropagation();
+          if (winApi.aiOpenCodeRestart) await winApi.aiOpenCodeRestart();
+          await loadModels(); drawAiMenu();
+          fx.toast('OpenCode restarted');
+        };
+        aimenu.appendChild(it);
+        continue;
+      }
       const it = fx.el('div', 'menu-item', '<span class="ai-n"></span><span class="ai-c"></span><button class="ai-x" aria-label="Remove"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>');
       $('.ai-n', it).textContent = p.name; $('.ai-c', it).textContent = p.models.length;
       it.setAttribute('aria-label', p.name);
+      if (p.builtIn) $('.ai-x', it).remove();
       it.onclick = () => {   // jump to that AI: its first model goes into the composer
         const opts = JSON.parse($('.cl-model').dataset.options), v = opts.find((o) => o[0].startsWith('custom|' + p.id + '|'));
         if (v) { $('.cl-model').dataset.value = v[0]; model = fx.select($('.cl-model'), keep); keep(); }
       };
-      $('.ai-x', it).onclick = async (e) => {
-        e.stopPropagation();   // the menu stays open and refreshes instead
+      if (!p.builtIn) $('.ai-x', it).onclick = async (e) => {
+        e.stopPropagation();
         if (!(await fx.ask({ title: 'Remove this AI?', text: `"${p.name}" and its models leave the list. Its chats stay readable.`, ok: 'Remove', cancel: 'Keep' }))) return;
         if (winApi.aiRemove) await winApi.aiRemove(p.id);
         await loadModels(); drawAiMenu(); fx.toast(p.name + ' removed');
@@ -335,6 +400,7 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
   });
   const mode = fx.select($('.cl-mode'), () => { keep(); $('.cl-mode').classList.toggle('danger', mode.get() === 'bypassPermissions'); });
   $('.cl-mode').classList.toggle('danger', mode.get() === 'bypassPermissions');
+  pony = fx.select($('.cl-pony'), keep);
 
   const box = $('.cl-input');
   box.addEventListener('input', () => box.classList.toggle('empty', !box.innerText.trim()));
@@ -349,6 +415,8 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
   $('.cl-chats').onclick = () => drawer(!root.classList.contains('drawer'));
   $('.cl-search input').addEventListener('input', drawList);
   msgs().addEventListener('click', async (e) => {
+    const ins = e.target.closest('.cl-ins');
+    if (ins) { if (onCode) onCode(ins.parentNode.querySelector('code').textContent); return; }
     const b = e.target.closest('.cl-cp'); if (!b) return;
     if (await winApi.copy(b.parentNode.querySelector('code').textContent)) { b.textContent = 'Copied'; setTimeout(() => (b.textContent = 'Copy'), 1200); }
   });
@@ -370,9 +438,10 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
   async function open() {
     if (!started) {
       started = true;
-      winApi.onClaude((key, o) => { if (key === cl.run) onEvent(o); });   // winApi is defined by client.js, which loads after this file
+      winApi.onClaude((key, o) => { if (key === cl.run) onEvent(o); else if (cl.busy && !cl.run) (early[key] = early[key] || []).push(o); });   // a fast API can answer before the send call returns   // winApi is defined by client.js, which loads after this file
       if (winApi.onClaudeChanged) winApi.onClaudeChanged((ids) => { if (root.offsetParent) sync(ids); });   // only while this chat is on screen
       if (winApi.onClaudeUsage) winApi.onClaudeUsage(showUsage);
+      if (winApi.claudePlugins) winApi.claudePlugins().then((p) => { hasPony = !!(p && p.ponytail); syncPony(); }).catch(() => {});   // winApi exists only once client.js has loaded
       if (winApi.claudeUsage) winApi.claudeUsage().then(showUsage).catch(() => {});
       loadModels();
       drawAiMenu();
@@ -383,6 +452,46 @@ function ClaudeChat(root, { compact = false, mcp = false, hero = null, defaultDi
     winApi.claudeAuth().then((a) => { $('.cl-auth').hidden = !!a.loggedIn; }).catch(() => {});
   }
   return { open, newChat };
+}
+
+/** A folder browser for the PC Flux Control runs on (from a browser too): resolves to the chosen path, or null. */
+function pickFolder(start) {
+  return new Promise((done) => {
+    const ICO = '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+    const m = fx.el('div', 'fp-modal', `<div class="fp-card">
+      <div class="fp-head"><b>Choose a folder</b><span class="fp-path"></span></div>
+      <div class="fp-bar"><button class="fp-up" aria-label="Up one folder"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button><button class="fp-q" data-q="">This PC</button><button class="fp-q" data-q="~">Home</button><button class="fp-q" data-q="~\\Desktop">Desktop</button><button class="fp-q" data-q="~\\Documents">Documents</button></div>
+      <div class="fx-scroll fp-list"><div class="view"></div></div>
+      <div class="fp-foot"><button class="btn fp-cancel">Cancel</button><button class="btn pri fp-ok">Choose this folder</button></div></div>`);
+    m.setAttribute('data-local-keys', '');
+    document.body.appendChild(m); fx.scroll(m.querySelector('.fp-list'));
+    requestAnimationFrame(() => m.classList.add('open'));
+    let cur = { path: '', parent: null }, home = '';
+    const close = (v) => { m.classList.remove('open'); setTimeout(() => m.remove(), 250); done(v); };
+    async function go(dir) {
+      const r = await winApi.fsDirs(dir).catch((e) => ({ error: e.message, dirs: [] }));
+      if (r.error) fx.toast(r.error);
+      if (r.home) home = r.home;
+      if (r.error && cur.path) return;
+      cur = r;
+      m.querySelector('.fp-path').textContent = r.path || 'This PC';
+      m.querySelector('.fp-ok').classList.toggle('off', !r.path);
+      const v = m.querySelector('.fp-list .view'); v.innerHTML = ''; v.scrollTop = 0;
+      for (const d of r.dirs) {
+        const row = fx.el('div', 'fp-row', ICO + '<span></span>');
+        row.querySelector('span').textContent = r.path ? d : d.replace(/\\$/, '');
+        row.onclick = () => go(r.path ? r.path.replace(/\\$/, '') + '\\' + d : d);
+        v.appendChild(row);
+      }
+      if (!r.dirs.length) v.innerHTML = '<div class="fp-empty">No folders in here</div>';
+    }
+    m.querySelector('.fp-up').onclick = () => cur.parent != null && go(cur.parent);
+    m.querySelectorAll('.fp-q').forEach((b) => (b.onclick = () => go(b.dataset.q.replace('~', home))));
+    m.querySelector('.fp-cancel').onclick = () => close(null);
+    m.querySelector('.fp-ok').onclick = () => cur.path && close(cur.path);
+    m.onclick = (e) => { if (e.target === m) close(null); };
+    winApi.fsDirs('').then((r) => { home = r.home || ''; go(start || home); }).catch(() => go(start));
+  });
 }
 
 const Claude = typeof document === 'undefined' || !document.querySelector('#clRoot') ? null : ClaudeChat(document.querySelector('#clRoot'));

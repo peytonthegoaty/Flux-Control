@@ -310,6 +310,23 @@ $('#stopShare').onclick = async () => {
     go('share');
   }
 };
+// ---- updates: installed without asking; a session you are watching finishes first
+let updateWaiting = false;
+const applyUpdate = () => { fx.toast('Updating Flux Control…'); setTimeout(() => winApi.applyUpdate(), 1200); };
+if (winApi.onUpdate) {
+  winApi.onUpdate((v) => {
+    if (current === 'session') { if (!updateWaiting) fx.toast(`Version ${v} is ready. It installs when you disconnect.`); updateWaiting = true; }
+    else applyUpdate();
+  });
+  winApi.onUpdateFailed((m) => fx.toast('Update failed: ' + m));
+}
+// after an update restart: share again with the same settings and password
+if (winApi.resume) winApi.resume().then(async (cfg) => {
+  if (!cfg) return;
+  const r = await winApi.hostStart(cfg);
+  if (!r.ok) return fx.toast('Could not share again after the update: ' + r.err);
+  buildRows(cfg.methods); sharing = true; show('sharing'); fx.toast('Updated. Sharing again.');
+});
 // if the app was reloaded while the host kept running
 winApi.hostRunning && winApi.hostRunning().then((on) => { if (on) { sharing = true; } });
 
@@ -367,7 +384,7 @@ let hinted = false;
 function setRemoteCursor(name) {
   const n = Viewer.shape(name);
   if (n === 'none' && !hinted && Viewer.active() && !Viewer.locked()) { hinted = true; fx.toast(Hud.auto() ? 'This game hides its cursor. Click the screen to capture the mouse.' : 'This game hides its cursor. Turn on Mouse lock in the gear menu.'); }
-  stage.style.cursor = n;
+  stage.style.cursor = n === 'none' ? 'default' : n;   // the pointer only disappears in mouse lock (pointer lock hides it)
   $('#cursorHint').textContent = demo ? `remote cursor: ${n}` : '';
 }
 window.FluxClient = { setRemoteCursor };
@@ -396,6 +413,7 @@ function endSession() {
   stage.classList.remove('live'); stage.style.cursor = '';
   show('connect');
   codeIn.value = ''; pwIn.value = ''; updateCode();
+  if (updateWaiting) applyUpdate();
 }
 
 syncNav();

@@ -110,3 +110,8 @@ html, body { background: #050505; }
 .hudpill.on { display: flex; animation: appear .35s var(--ease); }
 .hudpill b { color: #fff; font-weight: 650; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 .tb-menu { white-space: normal; }
+
+/* the bar has no circle any more: hidden with Right Ctrl, it slides up out of view */
+.pill-f[hidden] { display: none; }
+.pillbar.collapsed { transform: translate(-50%, -140%); opacity: 0; pointer-events: none; }
+.pillbar { transition: transform .4s var(--ease), opacity .3s; }
