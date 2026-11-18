@@ -371,8 +371,10 @@ function startOpenCodeApi(sender, d, text, cfg) {
         let r = null, lastErr = null;
         for (const b of (round === 0 ? bases : [effBase])) {
           try {
+            const to = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(20000) : null;
+            const signal = to && AbortSignal.any ? AbortSignal.any([ac.signal, to]) : ac.signal;
             const res = await fetch(b + '/chat/completions', {
-              method: 'POST', signal: ac.signal,
+              method: 'POST', signal,
               headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}) },
               body: JSON.stringify({ model: d.model, messages: msgs, stream: true, ...(tools ? { tools } : {}) }),
             });
