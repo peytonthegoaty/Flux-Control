@@ -262,20 +262,35 @@ const ocExe = () => { const p = path.join(process.env.APPDATA || '', 'npm', 'nod
 const ocCfgFile = () => path.join(home(), 'opencode.json');
 const readOcCfg = () => { try { const c = JSON.parse(fs.readFileSync(ocCfgFile(), 'utf8')); return { mode: c.mode === 'api' ? 'api' : 'cli', base: cleanBase(c.base) || 'http://127.0.0.1:4096/v1', key: c.key || '' }; } catch { return { mode: 'cli', base: 'http://127.0.0.1:4096/v1', key: '' }; } };
 const writeOcCfg = (c) => { fs.mkdirSync(home(), { recursive: true }); fs.writeFileSync(ocCfgFile(), JSON.stringify(c)); };
-let ocFree = null, ocApiModels = null, ocApiBase = '';
+let ocFree = null, ocApiModels = null, ocApiBase = '', ocApiEff = '';
+const ocApiBases = (base) => {
+  base = cleanBase(base);
+  const out = [base];
+  if (/\/v1$/i.test(base)) out.push(base.replace(/\/v1$/i, '')); else out.push(base + '/v1');
+  return [...new Set(out.filter(Boolean))];
+};
+const ocFetchModels = async (cfg) => {
+  const key = cfg.key ? unseal(cfg.key) : '';
+  for (const b of ocApiBases(cfg.base)) {
+    try {
+      const r = await fetch(b + '/models', { headers: key ? { Authorization: 'Bearer ' + key } : {} });
+      if (!r.ok) continue;
+      const j = await r.json().catch(() => null);
+      const m = (Array.isArray(j && j.data) ? j.data : Array.isArray(j && j.models) ? j.models : Array.isArray(j) ? j : []).map((x) => (typeof x === 'string' ? x : x && (x.id || x.name))).filter(Boolean).slice(0, 300);
+      if (m.length) return { models: m, eff: b };
+    } catch (e) { log('opencode api models', b, e.message || e); }
+  }
+  return { models: [], eff: cleanBase(cfg.base) };
+};
 const ocModels = () => {
   const cfg = readOcCfg();
   if (cfg.mode === 'api') {
-    if (ocApiModels && ocApiBase === cfg.base) return Promise.resolve(ocApiModels);
-    return (async () => {
-      try {
-        const r = await fetch(cfg.base + '/models', { headers: cfg.key ? { Authorization: 'Bearer ' + unseal(cfg.key) } : {} });
-        const j = await r.json();
-        const m = (Array.isArray(j.data) ? j.data : Array.isArray(j.models) ? j.models : Array.isArray(j) ? j : []).map((x) => (typeof x === 'string' ? x : x.id || x.name)).filter(Boolean).slice(0, 300);
-        if (m.length) { ocApiModels = m; ocApiBase = cfg.base; }
-        return m;
-      } catch { return ocApiModels && ocApiBase === cfg.base ? ocApiModels : []; }
-    })();
+    if (ocApiModels && ocApiBase === cleanBase(cfg.base)) return Promise.resolve(ocApiModels);
+    return ocFetchModels(cfg).then(({ models, eff }) => {
+      ocApiBase = cleanBase(cfg.base);
+      if (models.length) { ocApiModels = models; ocApiEff = eff; }
+      return models.length ? models : (ocApiBase === cleanBase(cfg.base) && ocApiModels ? ocApiModels : []);
+    });
   }
   return (ocFree || !ocExe() ? Promise.resolve(ocFree || []) : new Promise((ok) => execFile(ocExe(), ['models'], { windowsHide: true, timeout: 60000 }, (_e, out) => {
     const m = String(out || '').split(/\r?\n/).map((s) => s.trim()).filter((s) => /^[\w.-]+\/[\w.:\/@-]+$/.test(s));   // every model OpenCode has, all its providers (provider/model)
@@ -346,15 +361,31 @@ function startOpenCodeApi(sender, d, text, cfg) {
   const send = (o) => { if (!sender.isDestroyed()) sender.send('claude:line', key, o); };
   const tools = d.mcp ? mcp.TOOLS.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.inputSchema } })) : undefined;
   const t0 = Date.now(), apiKey = cfg.key ? unseal(cfg.key) : '';
+  const bases = ocApiBases(base);
+  if (ocApiEff && cleanBase(cfg.base) === ocApiBase && bases.includes(ocApiEff)) bases.sort((a, b) => (a === ocApiEff ? -1 : b === ocApiEff ? 1 : 0));
+  else if (ocApiEff && cleanBase(cfg.base) === ocApiBase) bases.unshift(ocApiEff);
   (async () => {
     try {
+      let effBase = bases[0];
       for (let round = 0; round < 12; round++) {
-        const r = await fetch(base + '/chat/completions', {
-          method: 'POST', signal: ac.signal,
-          headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}) },
-          body: JSON.stringify({ model: d.model, messages: msgs, stream: true, ...(tools ? { tools } : {}) }),
-        });
-        if (!r.ok) throw new Error(`The API answered ${r.status}: ${(await r.text()).slice(0, 300)}`);
+        let r = null, lastErr = null;
+        for (const b of (round === 0 ? bases : [effBase])) {
+          try {
+            const res = await fetch(b + '/chat/completions', {
+              method: 'POST', signal: ac.signal,
+              headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}) },
+              body: JSON.stringify({ model: d.model, messages: msgs, stream: true, ...(tools ? { tools } : {}) }),
+            });
+            if (!res.ok) {
+              const body = (await res.text()).slice(0, 300);
+              lastErr = new Error(`The API answered ${res.status}: ${body}`);
+              if (res.status === 404 || res.status === 405) continue;
+              throw lastErr;
+            }
+            r = res; effBase = b; ocApiEff = b; ocApiBase = cleanBase(cfg.base); break;
+          } catch (e) { lastErr = e; if (ac.signal.aborted) throw e; }
+        }
+        if (!r) throw lastErr || new Error('Could not reach the OpenCode API');
         let textOut = '', started = false, calls = [], buf = '';
         const dec = new TextDecoder();
         for await (const chunk of r.body) {
@@ -405,7 +436,7 @@ function startOpenCodeApi(sender, d, text, cfg) {
 function ocRestart() {
   for (const [k, r] of runs) if (String(r.sid).startsWith('oc-')) { try { r.child.kill(); } catch {} runs.delete(k); }
   ocSessions.clear();
-  ocFree = null; ocApiModels = null; ocApiBase = '';
+  ocFree = null; ocApiModels = null; ocApiBase = ''; ocApiEff = '';
   return { ok: true };
 }
 function ocSetMode(d) {
